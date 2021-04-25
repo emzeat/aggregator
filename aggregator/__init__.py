@@ -23,7 +23,7 @@ def main():
     logging.info(f"Reading configuration from {args.config}")
     with open(args.config, 'r') as configfile:
         lines = configfile.readlines()
-        lines = [l for l in lines if not l.lstrip().startswith('#')]
+        lines = [l if not l.lstrip().startswith('#') else '\n' for l in lines]
         config = json.loads(''.join(lines))
 
     if not isinstance(config, dict):

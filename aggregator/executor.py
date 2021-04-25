@@ -19,7 +19,7 @@ class Executor(Check):
 
     def on_run(self):
         for c in self.checks:
-            try:
+            #try:
                 self.results += c.run()
-            except Exception as e:
-                c.logger.fatal(f'Run failure: {e}')
+            #except Exception as e:
+            #    c.logger.fatal(f'Run failure: {e}')

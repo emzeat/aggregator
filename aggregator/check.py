@@ -42,7 +42,7 @@ class Check:
     class Result:
         """Keys in a result dictionary"""
         HOST = 'host'  # the name of the targeted host
-        DEVICE = 'device' # the device on the targeted host
+        DEVICE = 'device'  # the device on the targeted host
         NAME = 'name'  # the name of the implemented check
         TIME = 'time'  # the UTC time at which check was run
         FIELDS = 'fields'  # the list of measured values
@@ -474,7 +474,7 @@ class CheckNetgearGS108E(Check):
         """Port Status: 1:Disconnected"""
         values = self.read_property(CheckNetgearGS108E.PROPERTY_PORT_STATUS)
         for p in self.re_port_status.findall(values):
-            device=f'port{p[0]}'
+            device = f'port{p[0]}'
             if 'Disconnected' == p[1]:
                 self.add_field_value('link', 0, unit='mbit', device=device)
             else:
@@ -484,7 +484,7 @@ class CheckNetgearGS108E(Check):
         """Port Statistics: 1:rx=0,tx=0"""
         values = self.read_property(CheckNetgearGS108E.PROPERTY_PORT_STATISTICS)
         for p in self.re_port_statistic.findall(values):
-            device=f'port{p[0]}'
+            device = f'port{p[0]}'
             self.add_field_value('recv', int(p[1]), unit='bytes', device=device)
             self.add_field_value('sent', int(p[2]), unit='bytes', device=device)
 
@@ -495,6 +495,46 @@ class CheckNetgearGS108E(Check):
         self.logger.debug(f"Status for:\n\t{host}\n\t{model}")
         self.get_port_states()
         self.get_port_statistics()
+
+
+class CheckNetgearGS108Ev2(Check):
+    """Gather statistics from a NSDP enabled switch such as GS108E
+
+    Uses python implementation of NSDP from https://github.com/Z3po/ProSafeLinux
+    """
+    def __init__(self, config: dict):
+        super().__init__(name='gs108e', config=config)
+        self.interface = config['interface']
+        self.switch_mac = config['switch']
+        self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
+
+    def on_run(self):
+        from .psl_class import ProSafeLinux
+        from .psl_typ import PslTypSpeedStat
+        switch = ProSafeLinux()
+        switch.set_timeout(self.timeout)
+        switch.bind(self.interface)
+        queries = [ProSafeLinux.CMD_MODEL, ProSafeLinux.CMD_NAME, ProSafeLinux.CMD_PORT_STAT, ProSafeLinux.CMD_SPEED_STAT]
+        response = switch.query(queries, self.switch_mac)
+        response = {r.get_name(): v for r,v in response.items()}
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Status for:\n\thost: {response.get('name',None)}\n\tmodel: {response.get('model',None)}")
+        for p in response['port_stat']:
+            device = f"port{p['port']}"
+            self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
+            self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
+            self.add_field_value('errors', int(p['error']), device=device)
+        for p in response['speed_stat']:
+            device = f"port{p['port']}"
+            speed = p['speed']
+            if speed == PslTypSpeedStat.SPEED_1G:
+                self.add_field_value('link', 1000, unit='mbit', device=device)
+            elif speed == PslTypSpeedStat.SPEED_100MH or speed == PslTypSpeedStat.SPEED_100ML:
+                self.add_field_value('link', 100, unit='mbit', device=device)
+            elif speed == PslTypSpeedStat.SPEED_10MH or speed == PslTypSpeedStat.SPEED_10ML:
+                self.add_field_value('link', 10, unit='mbit', device=device)
+            else:
+                self.add_field_value('link', 0, unit='mbit', device=device)
 
 
 class CheckUPS(Check):
@@ -537,8 +577,10 @@ class CheckDocker(Check):
         """Constructor"""
         super().__init__(name='docker', config=config)
         import docker
-        #self.client = docker.from_env()
-        self.client = docker.DockerClient(base_url='ssh://heimdall.mlba-team.de:22', use_ssh_client=True)
+        if 'url' in config:
+            self.client = docker.DockerClient(base_url=config['url'], use_ssh_client=True)
+        else:
+            self.client = docker.from_env()
 
     def on_run(self):
         def graceful_chain_get(d, *args, default=None):
@@ -553,20 +595,18 @@ class CheckDocker(Check):
                     return default
             return t
 
-        def calculate_cpu_percent(d):
+        def calculate_cpu_seconds(d):
+            """Return CPU usage as user, system in seconds"""
             # credit to sen
             # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            cpu_count = len(d["cpu_stats"]["cpu_usage"]["percpu_usage"])
-            cpu_percent = 0.0
-            cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - \
-                        float(d["precpu_stats"]["cpu_usage"]["total_usage"])
-            system_delta = float(d["cpu_stats"]["system_cpu_usage"]) - \
-                           float(d["precpu_stats"]["system_cpu_usage"])
-            if system_delta > 0.0:
-                cpu_percent = cpu_delta / system_delta * 100.0 * cpu_count
-            return cpu_percent
+            # also see https://docs.docker.com/engine/api/v1.21/
+            ns_per_second = 1000000.0
+            user = float(d["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
+            system = (float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
+            return user, system
 
         def calculate_blkio_bytes(d):
+            """Return disk I/O as (read,written) in bytes"""
             # credit to sen
             # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
             bytes_stats = graceful_chain_get(d, "blkio_stats", "io_service_bytes_recursive")
@@ -582,6 +622,7 @@ class CheckDocker(Check):
             return r, w
 
         def calculate_network_bytes(d):
+            """Return network I/O as (recv,sent) in bytes"""
             # credit to sen
             # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
             networks = graceful_chain_get(d, "networks")
@@ -594,12 +635,15 @@ class CheckDocker(Check):
                 t += data["tx_bytes"]
             return r, t
 
-        containers = self.client.containers.list()
+        # FIXME: Using the docker rest-api is slow, rather parse the cgroups
+        #        information directly, see https://crate.io/a/analyzing-docker-container-performance-native-tools/
+        containers = self.client.containers.list(sparse=False)
         for c in containers:
             name = f"container '{c.name}'"
             self.add_field_value('status', c.status, device=name)
             stats = c.stats(stream=False)
-            self.add_field_value('cpu', 100.0 * calculate_cpu_percent(stats), '%', device=name)
+            u, s = calculate_cpu_seconds(stats)
+            self.add_field_value('cpu', u + s, 'seconds', device=name)
             r, t = calculate_network_bytes(stats)
             self.add_field_value('sent', t, 'bytes', device=name)
             self.add_field_value('recv', r, 'bytes', device=name)
@@ -619,7 +663,7 @@ CHECKS = {
     'sensors': CheckSensors,
     'network': CheckNetwork,
     'disks': CheckDisks,
-    'gs108e': CheckNetgearGS108E,
+    'gs108e': CheckNetgearGS108Ev2,
     'ups': CheckUPS,
     'docker': CheckDocker
 }
