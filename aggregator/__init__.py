@@ -2,6 +2,7 @@ import argparse
 import logging
 import json
 import sys
+import datetime
 
 from .executor import Executor
 from .check import Check, CHECKS
@@ -30,7 +31,7 @@ def main():
         logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
         sys.exit(1)
 
-    engine = Executor()
+    engine = Executor(interval=datetime.timedelta(seconds=config.get('interval', 30)))
     for entry in config.get('checks', []):
         try:
             entry_type = entry[Check.Config.TYPE]

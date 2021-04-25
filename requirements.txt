@@ -1,3 +1,4 @@
+wheel
 influxdb-client
 fritzconnection
 dnspython
