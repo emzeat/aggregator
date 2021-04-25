@@ -2,7 +2,7 @@ import abc
 import json
 import logging
 
-from influxdb_client import InfluxDBClient
+from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from .check import Check
@@ -40,20 +40,15 @@ class OutputInfluxDb(Output):
     def write(self, results):
         points = []
         for result in results:
-            point = {
-                "measurement": result[Check.Result.NAME],
-                "tags": {
-                    "host": result[Check.Result.HOST]
-                },
-                "time": result[Check.Result.TIME].isoformat(),
-                "fields": {}
-            }
+            point = Point(result[Check.Result.NAME]) \
+                .tag("host", result[Check.Result.HOST]) \
+                .time(result[Check.Result.TIME].isoformat())
             if Check.Result.DEVICE in result:
-                point["tags"]["device"] = result[Check.Result.DEVICE]
+                point = point.tag("device", result[Check.Result.DEVICE])
             for field in result[Check.Result.FIELDS]:
-                point['fields'][field[Check.Field.NAME]] = field[Check.Field.VALUE]
+                point = point.field(field[Check.Field.NAME], field[Check.Field.VALUE])
                 if Check.Field.UNIT in field:
-                    point['fields'][f"{field[Check.Field.NAME]}_unit"] = field[Check.Field.UNIT]
+                    point = point.field(f"{field[Check.Field.NAME]}_unit", field[Check.Field.UNIT])
             points.append(point)
         self.write_api.write(self.bucket, self.org, points)
 
