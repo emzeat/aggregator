@@ -32,8 +32,9 @@ class OutputInfluxDb(Output):
         self.token = config['token']
         self.org = config['org']
         self.bucket = config['bucket']
+        self.url = config['url']
 
-        self.client = InfluxDBClient(url="https://influx.heimdall.mlba-team.de", token=self.token)
+        self.client = InfluxDBClient(url=self.url, token=self.token)
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
 
     def write(self, results):
@@ -53,9 +54,7 @@ class OutputInfluxDb(Output):
                 point['fields'][field[Check.Field.NAME]] = field[Check.Field.VALUE]
                 if Check.Field.UNIT in field:
                     point['fields'][f"{field[Check.Field.NAME]}_unit"] = field[Check.Field.UNIT]
-
             points.append(point)
-        self.logger.debug(json.dumps(points, indent='  '))
         self.write_api.write(self.bucket, self.org, points)
 
 

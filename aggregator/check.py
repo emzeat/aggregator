@@ -74,7 +74,6 @@ class Check:
         """
         import logging
         self.logger = logging.getLogger(f"aggregator.check.{name}")
-        self.logger.setLevel(logging.getLogger().level)
         self.name = name
         self.host = config['host']
         self.logger.info(f"New instance monitoring '{self.host}'")
@@ -194,18 +193,22 @@ class CheckPing(Check):
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='ping', config=config)
+        self.timeout = config.get('timeout', 5)
 
     def ping(self, command='ping', check='ping'):
         try:
-            out = subprocess.check_output([command, '-c', '1', self.host], stderr=subprocess.STDOUT, encoding='utf-8')
+            out = subprocess.check_output([command, '-c', '1', self.host], stderr=subprocess.STDOUT,
+                                          encoding='utf-8', timeout=self.timeout)
             time = float(re.search(RE_TIME, out)[1])
             self.add_field_value(field='duration', value=time, unit='ms', device=check)
         except subprocess.CalledProcessError:
             self.add_field_value(field='duration', value=0.0, unit='ms', device=check)
+        except subprocess.TimeoutExpired:
+            self.add_field_value(field='duration', value=0.0, unit='ms', device=check)
 
     def on_run(self):
-        self.ping(command='ping', check='ping-ipv4')
-        self.ping(command='ping6', check='ping-ipv6')
+        self.ping(command='ping', check='ipv4')
+        self.ping(command='ping6', check='ipv6')
 
 
 class CheckDns(Check):
@@ -217,12 +220,12 @@ class CheckDns(Check):
         self.domain = config.get('domain', 'strato.de')
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
 
-        import dns.name
         import dns.resolver
         self.resolver = dns.resolver.Resolver()
         self.resolver.nameservers = [self.host]
 
     def measure_record_type(self, record='A'):
+        device = f"record '{record}'"
         try:
             start = datetime.datetime.now()
             r = self.resolver.resolve(self.domain, record, search=True)
@@ -230,15 +233,15 @@ class CheckDns(Check):
             answers = [a.to_text() for a in r.response.answer]
             self.logger.debug(f"Response is {answers}")
             if answers:
-                self.add_field_value("duration", (end - start).total_seconds() * 1000.0, "ms", device=record)
+                self.add_field_value("duration", (end - start).total_seconds() * 1000.0, "ms", device=device)
             else:
-                elf.add_field_value("duration", 0.0, "ms", device=record)
+                self.add_field_value("duration", 0.0, "ms", device=device)
         except dns.rdatatype.UnknownRdatatype:
-            self.add_field_value("duration", 0.0, "ms", device=record)
+            self.add_field_value("duration", 0.0, "ms", device=device)
         except dns.resolver.NoNameservers:
-            self.add_field_value("duration", 0.0, "ms", device=record)
+            self.add_field_value("duration", 0.0, "ms", device=device)
         except dns.exception.Timeout:
-            self.add_field_value("duration", 0.0, "ms", device=record)
+            self.add_field_value("duration", 0.0, "ms", device=device)
 
     def on_run(self):
         self.measure_record_type('A')
@@ -277,6 +280,7 @@ class CheckHttp(Check):
         self.verify = config.get('verify', True)
         self.match = config.get('match', None)
         self.cname = config.get('cname', None)
+        self.expect_status = config.get('expect_status', 200)
 
     def on_run(self):
         host = self.host
@@ -298,20 +302,21 @@ class CheckHttp(Check):
             socket.getaddrinfo = orig_getaddrinfo
         except requests.exceptions.ConnectionError as e:
             socket.getaddrinfo = orig_getaddrinfo
-            self.add_field_value('duration', 0, 'ms')
+            self.add_field_value('duration', 0.0, 'ms')
             self.logger.debug(f"Request failed: {e}")
             return
         end = datetime.datetime.now()
         duration = (end - start).total_seconds() * 1000.0
         self.add_field_value('status_code', r.status_code)
         self.logger.debug(f"Request completed: {r.status_code}")
-        if 200 == r.status_code:
+        if self.expect_status == r.status_code:
             if self.match and self.match not in r.text:
-                self.add_field_value('duration', 0, 'ms')
+                self.add_field_value('duration', 0.0, 'ms')
                 return
             self.add_field_value('duration', duration, 'ms')
         else:
-            self.add_field_value('duration', 0, 'ms')
+            self.logger.warning(f"Expected {self.expect_status} but got {r.status_code}")
+            self.add_field_value('duration', 0.0, 'ms')
 
 
 class CheckCpu(Check):
@@ -492,7 +497,7 @@ class CheckNetgearGS108E(Check):
         if self.logger.isEnabledFor(logging.DEBUG):
             model = self.read_property(CheckNetgearGS108E.PROPERTY_MODEL)
             host = self.read_property(CheckNetgearGS108E.PROPERTY_HOSTNAME)
-        self.logger.debug(f"Status for:\n\t{host}\n\t{model}")
+            self.logger.debug(f"Status for:\n\t{host}\n\t{model}")
         self.get_port_states()
         self.get_port_statistics()
 
@@ -514,11 +519,14 @@ class CheckNetgearGS108Ev2(Check):
         switch = ProSafeLinux()
         switch.set_timeout(self.timeout)
         switch.bind(self.interface)
-        queries = [ProSafeLinux.CMD_MODEL, ProSafeLinux.CMD_NAME, ProSafeLinux.CMD_PORT_STAT, ProSafeLinux.CMD_SPEED_STAT]
+        queries = [ProSafeLinux.CMD_MODEL, ProSafeLinux.CMD_NAME,
+                   ProSafeLinux.CMD_PORT_STAT, ProSafeLinux.CMD_SPEED_STAT]
         response = switch.query(queries, self.switch_mac)
-        response = {r.get_name(): v for r,v in response.items()}
+        response = {r.get_name(): v for r, v in response.items()}
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Status for:\n\thost: {response.get('name',None)}\n\tmodel: {response.get('model',None)}")
+            self.logger.debug("Status for:"
+                              + f"\n\t host: {response.get('name',None)}"
+                              + f"\n\tmodel: {response.get('model',None)}")
         for p in response['port_stat']:
             device = f"port{p['port']}"
             self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
@@ -546,7 +554,7 @@ class CheckUPS(Check):
         from nut2 import PyNUTClient
         self.ups = config['ups']
         self.client = PyNUTClient(host=self.host, login=config['username'],
-                                  password=config['username'], debug=True)
+                                  password=config['username'])
 
     def on_run(self):
         if self.logger.isEnabledFor(logging.DEBUG):

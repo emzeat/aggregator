@@ -23,14 +23,14 @@ def main():
     logging.info(f"Reading configuration from {args.config}")
     with open(args.config, 'r') as configfile:
         lines = configfile.readlines()
-        lines = [l if not l.lstrip().startswith('#') else '\n' for l in lines]
+        lines = [line if not line.lstrip().startswith('#') else '\n' for line in lines]
         config = json.loads(''.join(lines))
 
     if not isinstance(config, dict):
         logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
         sys.exit(1)
 
-    executor = Executor()
+    engine = Executor()
     for entry in config.get('checks', []):
         try:
             entry_type = entry[Check.Config.TYPE]
@@ -39,7 +39,7 @@ def main():
             sys.exit(1)
         try:
             if entry_type in CHECKS:
-                executor.add_check(CHECKS[entry_type](entry))
+                engine.add_check(CHECKS[entry_type](entry))
             else:
                 logging.fatal(f"Unknown check '{entry_type}'")
                 sys.exit(1)
@@ -47,15 +47,10 @@ def main():
             logging.fatal(f"Failed to create check of type '{entry_type}': Missing entry {e}")
             sys.exit(1)
 
-    outputs = []
     for o in config.get('outputs', []):
         output_type = o.get('type')
         if output_type in OUTPUTS:
-            outputs.append(OUTPUTS[output_type](o))
+            engine.add_output(OUTPUTS[output_type](o))
 
-    results = executor.run()
-    for o in outputs:
-        o.write(results)
-
-
+    engine.run()
     sys.exit(0)
