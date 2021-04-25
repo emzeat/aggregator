@@ -28,7 +28,7 @@ class OutputStdout(Output):
 class OutputInfluxDb(Output):
 
     def __init__(self, config):
-        self.logger = logging.getLogger("influxdb")
+        self.logger = logging.getLogger("aggregator.output.influxdb")
         self.token = config['token']
         self.org = config['org']
         self.bucket = config['bucket']

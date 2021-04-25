@@ -26,8 +26,9 @@ def main():
         lines = [l for l in lines if not l.lstrip().startswith('#')]
         config = json.loads(''.join(lines))
 
-    if not isinstance(config, list):
+    if not isinstance(config, dict):
         logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
+        sys.exit(1)
 
     executor = Executor()
     for entry in config.get('checks', []):

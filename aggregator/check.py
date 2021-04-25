@@ -73,11 +73,12 @@ class Check:
         :param default_interval: The default interval at which to perform the check
         """
         import logging
-        self.logger = logging.getLogger(f"{name}")
+        self.logger = logging.getLogger(f"aggregator.check.{name}")
+        self.logger.setLevel(logging.getLogger().level)
         self.name = name
         self.host = config['host']
         self.logger.info(f"New instance monitoring '{self.host}'")
-        self.logger = logging.getLogger(f"{name}({self.host})")
+        self.logger = logging.getLogger(f"aggregator.check.{name}({self.host})")
         self.interval = config.get(Check.Config.INTERVAL, default_interval)
         self.host = config[Check.Config.HOST]
         self.last_state = {}
@@ -127,6 +128,7 @@ class Check:
         else:
             self.logger.debug('Run check - no interval configured')
         self.on_run()
+        self.logger.debug(f'Check completed in {(datetime.datetime.utcnow() - now)}')
         self.last_state[LAST_RUN] = now
         for device, values in self.field_values.items():
             self.results.append({
