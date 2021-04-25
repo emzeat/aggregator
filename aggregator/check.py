@@ -592,80 +592,83 @@ class CheckDocker(Check):
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='docker', config=config)
+        self.url = config.get('url', None)
         import docker
-        if 'url' in config:
-            self.client = docker.DockerClient(base_url=config['url'], use_ssh_client=True)
-        else:
-            self.client = docker.from_env()
+        self.docker_client = docker.DockerClient
+        self.docker_from_env = docker.from_env
+
+    def _graceful_chain_get(self, data, *args, default=None):
+        # credit to sen
+        # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+        node = data
+        for a in args:
+            try:
+                node = node[a]
+            except (KeyError, ValueError, TypeError, AttributeError):
+                self.logger.warning("can't get %r from %s", a, node)
+                return default
+        return node
+
+    @staticmethod
+    def _calculate_cpu_seconds(data):
+        """Return CPU usage as user, system in seconds"""
+        # credit to sen
+        # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+        # also see https://docs.docker.com/engine/api/v1.21/
+        ns_per_second = 1000000.0
+        user = float(data["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
+        system = (float(data["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
+        return user, system
+
+    def _calculate_blkio_bytes(self, data):
+        """Return disk I/O as (read,written) in bytes"""
+        # credit to sen
+        # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+        bytes_stats = self._graceful_chain_get(data, "blkio_stats", "io_service_bytes_recursive")
+        if not bytes_stats:
+            return 0, 0
+        read = 0
+        written = 0
+        for s in bytes_stats:
+            if s["op"] == "Read":
+                read += s["value"]
+            elif s["op"] == "Write":
+                written += s["value"]
+        return read, written
+
+    def _calculate_network_bytes(self, data):
+        """Return network I/O as (recv,sent) in bytes"""
+        # credit to sen
+        # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+        networks = self._graceful_chain_get(data, "networks")
+        if not networks:
+            return 0, 0
+        recv = 0
+        sent = 0
+        for if_name, data in networks.items():
+            recv += data["rx_bytes"]
+            sent += data["tx_bytes"]
+        return recv, sent
 
     def on_run(self):
-        def graceful_chain_get(d, *args, default=None):
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            t = d
-            for a in args:
-                try:
-                    t = t[a]
-                except (KeyError, ValueError, TypeError, AttributeError):
-                    self.logger.warning("can't get %r from %s", a, t)
-                    return default
-            return t
+        if self.url:
+            client = self.docker_client(base_url=self.url, use_ssh_client=True)
+        else:
+            client = self.docker_from_env()
 
-        def calculate_cpu_seconds(d):
-            """Return CPU usage as user, system in seconds"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            # also see https://docs.docker.com/engine/api/v1.21/
-            ns_per_second = 1000000.0
-            user = float(d["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
-            system = (float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
-            return user, system
-
-        def calculate_blkio_bytes(d):
-            """Return disk I/O as (read,written) in bytes"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            bytes_stats = graceful_chain_get(d, "blkio_stats", "io_service_bytes_recursive")
-            if not bytes_stats:
-                return 0, 0
-            r = 0
-            w = 0
-            for s in bytes_stats:
-                if s["op"] == "Read":
-                    r += s["value"]
-                elif s["op"] == "Write":
-                    w += s["value"]
-            return r, w
-
-        def calculate_network_bytes(d):
-            """Return network I/O as (recv,sent) in bytes"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            networks = graceful_chain_get(d, "networks")
-            if not networks:
-                return 0, 0
-            r = 0
-            t = 0
-            for if_name, data in networks.items():
-                r += data["rx_bytes"]
-                t += data["tx_bytes"]
-            return r, t
-
-        # FIXME: Using the docker rest-api is slow, rather parse the cgroups
-        #        information directly, see https://crate.io/a/analyzing-docker-container-performance-native-tools/
-        containers = self.client.containers.list(sparse=False)
-        for c in containers:
-            name = f"container '{c.name}'"
-            self.add_field_value('status', c.status, device=name)
-            stats = c.stats(stream=False)
-            u, s = calculate_cpu_seconds(stats)
-            self.add_field_value('cpu', u + s, 'seconds', device=name)
-            r, t = calculate_network_bytes(stats)
-            self.add_field_value('sent', t, 'bytes', device=name)
-            self.add_field_value('recv', r, 'bytes', device=name)
-            r, w = calculate_blkio_bytes(stats)
-            self.add_field_value('read', r, 'bytes', device=name)
-            self.add_field_value('written', w, 'bytes', device=name)
+        containers = client.containers.list(sparse=False)
+        for container in containers:
+            name = f"container '{container.name}'"
+            self.add_field_value('status', container.status, device=name)
+            stats = container.stats(stream=False)
+            user, system = self._calculate_cpu_seconds(stats)
+            self.add_field_value('cpu', user + system, 'seconds', device=name)
+            recv, sent = self._calculate_network_bytes(stats)
+            self.add_field_value('sent', sent, 'bytes', device=name)
+            self.add_field_value('recv', recv, 'bytes', device=name)
+            read, written = self._calculate_blkio_bytes(stats)
+            self.add_field_value('read', read, 'bytes', device=name)
+            self.add_field_value('written', written, 'bytes', device=name)
 
 
 class CheckDockerV2(Check):
@@ -677,80 +680,84 @@ class CheckDockerV2(Check):
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='docker', config=config)
+        self.url = config.get('url', None)
         import docker
-        if 'url' in config:
-            self.client = docker.DockerClient(base_url=config['url'], use_ssh_client=True)
+        self.docker_client = docker.DockerClient
+        self.docker_from_env = docker.from_env
+        self._fetch_containers()
+
+    def _fetch_containers(self):
+        if self.url:
+            client = self.docker_client(base_url=self.url, use_ssh_client=True)
         else:
-            self.client = docker.from_env()
+            client = self.docker_from_env()
+
+        class Container:
+            """Efficient storage of a running container"""
+            def __init__(self, api_container):
+                self.name = api_container.name
+                self.id = api_container.id
+
+        self.containers = [Container(c) for c in client.containers.list(sparse=False)]
+
+    def read_sysfs_node(self, path, key_index=0):
+        """Returns a dict with values of the sysfs node at path"""
+        try:
+            values = {}
+            with open(path) as node:
+                for line in node.readlines():
+                    line_parts = line.strip().split(' ')
+                    values[line_parts[key_index]] = ' '.join(line_parts[key_index + 1:])
+            # self.logger.debug(f"{path} yields {values}")
+            return values
+        except IOError:
+            self.logger.warning(f"Failed to read {path}")
+            return None
+
+    def read_net_dev_node(self, pid):
+        """Returns a dict with (recv, sent) tuples for interfaces used by pid"""
+        sysfs_traffic = self.read_sysfs_node(f"/proc/{pid}/net/dev")
+        if sysfs_traffic:
+            values = {}
+            for interface, raw_values in sysfs_traffic.items():
+                interface_values = [s for s in raw_values.split(' ') if s.strip()]
+                if interface.startswith('eth'):
+                    values[interface.strip(':')] = (interface_values[0], interface_values[8])
+            # self.logger.debug(f"/proc/{pid}/net/dev yields {values}")
+            return values
+        self.logger.warning(f"Failed to read /proc/{pid}/net/dev")
+        return None
 
     def on_run(self):
-        def graceful_chain_get(d, *args, default=None):
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            t = d
-            for a in args:
-                try:
-                    t = t[a]
-                except (KeyError, ValueError, TypeError, AttributeError):
-                    self.logger.warning("can't get %r from %s", a, t)
-                    return default
-            return t
-
-        def calculate_cpu_seconds(d):
-            """Return CPU usage as user, system in seconds"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            # also see https://docs.docker.com/engine/api/v1.21/
-            ns_per_second = 1000000.0
-            user = float(d["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
-            system = (float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
-            return user, system
-
-        def calculate_blkio_bytes(d):
-            """Return disk I/O as (read,written) in bytes"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            bytes_stats = graceful_chain_get(d, "blkio_stats", "io_service_bytes_recursive")
-            if not bytes_stats:
-                return 0, 0
-            r = 0
-            w = 0
-            for s in bytes_stats:
-                if s["op"] == "Read":
-                    r += s["value"]
-                elif s["op"] == "Write":
-                    w += s["value"]
-            return r, w
-
-        def calculate_network_bytes(d):
-            """Return network I/O as (recv,sent) in bytes"""
-            # credit to sen
-            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-            networks = graceful_chain_get(d, "networks")
-            if not networks:
-                return 0, 0
-            r = 0
-            t = 0
-            for if_name, data in networks.items():
-                r += data["rx_bytes"]
-                t += data["tx_bytes"]
-            return r, t
-
-        # FIXME: Using the docker rest-api is slow, rather parse the cgroups
-        #        information directly, see https://crate.io/a/analyzing-docker-container-performance-native-tools/
-        containers = self.client.containers.list(sparse=False)
-        for c in containers:
-            name = f"container '{c.name}'"
-            self.add_field_value('status', c.status, device=name)
-            stats = c.stats(stream=False)
-            u, s = calculate_cpu_seconds(stats)
-            self.add_field_value('cpu', u + s, 'seconds', device=name)
-            r, t = calculate_network_bytes(stats)
-            self.add_field_value('sent', t, 'bytes', device=name)
-            self.add_field_value('recv', r, 'bytes', device=name)
-            r, w = calculate_blkio_bytes(stats)
-            self.add_field_value('read', r, 'bytes', device=name)
-            self.add_field_value('written', w, 'bytes', device=name)
+        for container in self.containers:
+            name = f"container '{container.name}'"
+            # see https://crate.io/a/analyzing-docker-container-performance-native-tools/
+            sysfs_memory = self.read_sysfs_node(f"/sys/fs/cgroup/memory/docker/{container.id}/memory.stat")
+            if sysfs_memory:
+                self.add_field_value('memory', int(sysfs_memory['total_rss']), 'bytes', device=name)
+            sysfs_cpu = self.read_sysfs_node(f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
+            if sysfs_cpu:
+                ns_per_second = 1000000.0
+                cpu_total_ns = float(sysfs_cpu['user']) + float(sysfs_cpu['system'])
+                self.add_field_value('cpu', cpu_total_ns / ns_per_second, 'seconds', device=name)
+            sysfs_io_bytes = self.read_sysfs_node(
+                f"/sys/fs/cgroup/blkio/docker/{container.id}/blkio.throttle.io_service_bytes", key_index=1)
+            if sysfs_io_bytes:
+                self.add_field_value('read', float(sysfs_io_bytes['Read']), 'bytes', device=name)
+                self.add_field_value('written', float(sysfs_io_bytes['Write']), 'bytes', device=name)
+            sysfs_tasks = self.read_sysfs_node(
+                f"/sys/fs/cgroup/devices/docker/{container.id}/tasks")
+            if sysfs_tasks:
+                sysfs_pid = list(sysfs_tasks.keys())[0]
+                proc_traffic = self.read_net_dev_node(sysfs_pid)
+                if proc_traffic:
+                    recv = 0
+                    sent = 0
+                    for iface, values in proc_traffic.items():
+                        recv += int(values[0])
+                        sent += int(values[1])
+                    self.add_field_value('recv', recv, 'bytes', device=name)
+                    self.add_field_value('sent', sent, 'bytes', device=name)
 
 
 CHECKS = {
@@ -766,5 +773,5 @@ CHECKS = {
     'disks': CheckDisks,
     'gs108e': CheckNetgearGS108Ev2,
     'ups': CheckUPS,
-    'docker': CheckDocker
+    'docker': CheckDockerV2
 }
