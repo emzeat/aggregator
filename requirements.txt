@@ -1,0 +1,7 @@
+influxdb-client
+fritzconnection
+dnspython
+psutil
+requests
+nut2
+docker

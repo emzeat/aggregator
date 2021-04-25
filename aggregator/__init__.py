@@ -1,0 +1,60 @@
+import argparse
+import logging
+import json
+import sys
+
+from .executor import Executor
+from .check import Check, CHECKS
+from .output import Output, OUTPUTS
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Lightweight system monitoring daemon')
+    parser.add_argument('-v', '--verbose', help='Enable verbose logging', action='store_true', default=False)
+    parser.add_argument('-c', '--config', help='JSON config file to load', required=True)
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(encoding='utf-8', level=logging.DEBUG)
+    else:
+        logging.basicConfig(encoding='utf-8', level=logging.INFO)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+
+    logging.info(f"Reading configuration from {args.config}")
+    with open(args.config, 'r') as configfile:
+        lines = configfile.readlines()
+        lines = [l for l in lines if not l.lstrip().startswith('#')]
+        config = json.loads(''.join(lines))
+
+    if not isinstance(config, list):
+        logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
+
+    executor = Executor()
+    for entry in config.get('checks', []):
+        try:
+            entry_type = entry[Check.Config.TYPE]
+        except KeyError:
+            logging.fatal(f"Missing {Check.Config.TYPE} in {entry}")
+            sys.exit(1)
+        try:
+            if entry_type in CHECKS:
+                executor.add_check(CHECKS[entry_type](entry))
+            else:
+                logging.fatal(f"Unknown check '{entry_type}'")
+                sys.exit(1)
+        except KeyError as e:
+            logging.fatal(f"Failed to create check of type '{entry_type}': Missing entry {e}")
+            sys.exit(1)
+
+    outputs = []
+    for o in config.get('outputs', []):
+        output_type = o.get('type')
+        if output_type in OUTPUTS:
+            outputs.append(OUTPUTS[output_type](o))
+
+    results = executor.run()
+    for o in outputs:
+        o.write(results)
+
+
+    sys.exit(0)
