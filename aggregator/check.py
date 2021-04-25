@@ -511,6 +511,7 @@ class CheckNetgearGS108Ev2(Check):
 
     Uses python implementation of NSDP from https://github.com/Z3po/ProSafeLinux
     """
+
     def __init__(self, config: dict):
         super().__init__(name='gs108e', config=config)
         self.interface = config['interface']
@@ -529,8 +530,8 @@ class CheckNetgearGS108Ev2(Check):
         response = {r.get_name(): v for r, v in response.items()}
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Status for:"
-                              + f"\n\t host: {response.get('name',None)}"
-                              + f"\n\tmodel: {response.get('model',None)}")
+                              + f"\n\t host: {response.get('name', None)}"
+                              + f"\n\tmodel: {response.get('model', None)}")
         for p in response['port_stat']:
             device = f"port{p['port']}"
             self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
@@ -557,15 +558,18 @@ class CheckUPS(Check):
         super().__init__(name='ups', config=config)
         from nut2 import PyNUTClient
         self.ups = config['ups']
-        self.client = PyNUTClient(host=self.host, login=config['username'],
-                                  password=config['username'])
+        self.username = config['username']
+        self.password = config['password']
+        self.client_class = PyNUTClient
 
     def on_run(self):
+        client = self.client_class(host=self.host, login=self.username,
+                                   password=self.password)
         if self.logger.isEnabledFor(logging.DEBUG):
-            devices = self.client.list_ups()
+            devices = client.list_ups()
             self.logger.debug(f"devices={devices}")
         # https://networkupstools.org/docs/developer-guide.chunked/apas01.html
-        ups_vars = self.client.list_vars(self.ups)
+        ups_vars = client.list_vars(self.ups)
         self.add_field_value('charge', int(ups_vars['battery.charge']), '%')
         self.add_field_value('runtime', int(ups_vars['battery.runtime']), 'seconds')
         self.add_field_value('input', float(ups_vars['input.voltage']), 'V')
@@ -584,6 +588,91 @@ class CheckUPS(Check):
 
 class CheckDocker(Check):
     """Check load of docker containers"""
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='docker', config=config)
+        import docker
+        if 'url' in config:
+            self.client = docker.DockerClient(base_url=config['url'], use_ssh_client=True)
+        else:
+            self.client = docker.from_env()
+
+    def on_run(self):
+        def graceful_chain_get(d, *args, default=None):
+            # credit to sen
+            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+            t = d
+            for a in args:
+                try:
+                    t = t[a]
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    self.logger.warning("can't get %r from %s", a, t)
+                    return default
+            return t
+
+        def calculate_cpu_seconds(d):
+            """Return CPU usage as user, system in seconds"""
+            # credit to sen
+            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+            # also see https://docs.docker.com/engine/api/v1.21/
+            ns_per_second = 1000000.0
+            user = float(d["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
+            system = (float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
+            return user, system
+
+        def calculate_blkio_bytes(d):
+            """Return disk I/O as (read,written) in bytes"""
+            # credit to sen
+            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+            bytes_stats = graceful_chain_get(d, "blkio_stats", "io_service_bytes_recursive")
+            if not bytes_stats:
+                return 0, 0
+            r = 0
+            w = 0
+            for s in bytes_stats:
+                if s["op"] == "Read":
+                    r += s["value"]
+                elif s["op"] == "Write":
+                    w += s["value"]
+            return r, w
+
+        def calculate_network_bytes(d):
+            """Return network I/O as (recv,sent) in bytes"""
+            # credit to sen
+            # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+            networks = graceful_chain_get(d, "networks")
+            if not networks:
+                return 0, 0
+            r = 0
+            t = 0
+            for if_name, data in networks.items():
+                r += data["rx_bytes"]
+                t += data["tx_bytes"]
+            return r, t
+
+        # FIXME: Using the docker rest-api is slow, rather parse the cgroups
+        #        information directly, see https://crate.io/a/analyzing-docker-container-performance-native-tools/
+        containers = self.client.containers.list(sparse=False)
+        for c in containers:
+            name = f"container '{c.name}'"
+            self.add_field_value('status', c.status, device=name)
+            stats = c.stats(stream=False)
+            u, s = calculate_cpu_seconds(stats)
+            self.add_field_value('cpu', u + s, 'seconds', device=name)
+            r, t = calculate_network_bytes(stats)
+            self.add_field_value('sent', t, 'bytes', device=name)
+            self.add_field_value('recv', r, 'bytes', device=name)
+            r, w = calculate_blkio_bytes(stats)
+            self.add_field_value('read', r, 'bytes', device=name)
+            self.add_field_value('written', w, 'bytes', device=name)
+
+
+class CheckDockerV2(Check):
+    """Check load of docker containers
+
+    Optimized for performance when comparing to V1
+    """
 
     def __init__(self, config: dict):
         """Constructor"""
