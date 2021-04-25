@@ -15,9 +15,9 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        logging.basicConfig(encoding='utf-8', level=logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
     else:
-        logging.basicConfig(encoding='utf-8', level=logging.INFO)
+        logging.basicConfig(level=logging.INFO)
     logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 
     logging.info(f"Reading configuration from {args.config}")
