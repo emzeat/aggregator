@@ -63,6 +63,10 @@ class Check:
 
     DEFAULT_DEVICE = ''
 
+    def _reset(self):
+        self.results = []
+        self.field_values = defaultdict(list)
+
     def __init__(self, name: str, config: dict, default_interval: datetime.timedelta = None):
         """Constructs a new Check instance
 
@@ -81,8 +85,7 @@ class Check:
         self.interval = config.get(Check.Config.INTERVAL, default_interval)
         self.host = config[Check.Config.HOST]
         self.last_state = {}
-        self.results = []
-        self.field_values = defaultdict(list)
+        self._reset()
 
     @abc.abstractmethod
     def on_run(self):
@@ -114,6 +117,7 @@ class Check:
 
     def run(self):
         """Executes the checks implemented by this class"""
+        self._reset()
         now = datetime.datetime.utcnow()
         if self.interval:
             last = self.last_state.get(LAST_RUN, None)
