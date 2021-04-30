@@ -451,6 +451,36 @@ class CheckDisks(Check):
             self.report_mountpoint(m)
 
 
+class CheckDiskSpindown(Check):
+    """Measure spindown status of disks"""
+
+    def __init__(self, config: dict):
+        super().__init__(name='spindown', config=config)
+        self.disks = config['disks']
+        self.smartctl = config.get('smartctl', '/sbin/smartctl')
+        self.timeout = config.get('timeout', 5)
+
+    def report_disk(self, disk):
+        try:
+            out = subprocess.check_output([self.smartctl, '-i', '-n', 'standby', disk],
+                                          stderr=subprocess.STDOUT,
+                                          encoding='utf-8', timeout=self.timeout)
+            if 'STANDBY mode' in out:
+                # just a double net, we should get a returncode of 2 and end up below
+                self.add_field_value(field='standby', value=1, device=disk)
+            else:
+                self.add_field_value(field='standby', value=0, device=disk)
+        except subprocess.CalledProcessError as error:
+            if 2 == error.returncode:
+                self.add_field_value(field='standby', value=1, device=disk)
+            else:
+                raise
+
+    def on_run(self):
+        for d in self.disks:
+            self.report_disk(d)
+
+
 class CheckNetgearGS108E(Check):
     """Gather statistics from a NSDP enabled switch such as GS108E
 
@@ -786,5 +816,6 @@ CHECKS = {
     'disks': CheckDisks,
     'gs108e': CheckNetgearGS108Ev2,
     'ups': CheckUPS,
-    'docker': CheckDockerV2
+    'docker': CheckDockerV2,
+    'spindown': CheckDiskSpindown
 }
