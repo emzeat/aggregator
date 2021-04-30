@@ -127,7 +127,7 @@ class Check:
             elif last:
                 self.logger.debug(f'Run check - expired at {last + self.interval}')
             else:
-                self.logger.debug(f'Run check - never executed before')
+                self.logger.debug('Run check - never executed before')
         else:
             self.logger.debug('Run check - no interval configured')
         self.on_run()
@@ -482,28 +482,32 @@ class CheckNetgearGS108E(Check):
     def get_port_states(self):
         """Port Status: 1:Disconnected"""
         values = self.read_property(CheckNetgearGS108E.PROPERTY_PORT_STATUS)
+        connected_ports = set()
         for p in self.re_port_status.findall(values):
             device = f'port{p[0]}'
             if 'Disconnected' == p[1]:
                 self.add_field_value('link', 0, unit='mbit', device=device)
             else:
                 self.add_field_value('link', int(p[1][:-1]), unit='mbit', device=device)
+                connected_ports.add(device)
+        return connected_ports
 
-    def get_port_statistics(self):
+    def get_port_statistics(self, connected_ports):
         """Port Statistics: 1:rx=0,tx=0"""
         values = self.read_property(CheckNetgearGS108E.PROPERTY_PORT_STATISTICS)
         for p in self.re_port_statistic.findall(values):
             device = f'port{p[0]}'
-            self.add_field_value('recv', int(p[1]), unit='bytes', device=device)
-            self.add_field_value('sent', int(p[2]), unit='bytes', device=device)
+            if device in connected_ports:
+                self.add_field_value('recv', int(p[1]), unit='bytes', device=device)
+                self.add_field_value('sent', int(p[2]), unit='bytes', device=device)
 
     def on_run(self):
         if self.logger.isEnabledFor(logging.DEBUG):
             model = self.read_property(CheckNetgearGS108E.PROPERTY_MODEL)
             host = self.read_property(CheckNetgearGS108E.PROPERTY_HOSTNAME)
             self.logger.debug(f"Status for:\n\t{host}\n\t{model}")
-        self.get_port_states()
-        self.get_port_statistics()
+        connected = self.get_port_states()
+        self.get_port_statistics(connected)
 
 
 class CheckNetgearGS108Ev2(Check):
@@ -532,22 +536,27 @@ class CheckNetgearGS108Ev2(Check):
             self.logger.debug("Status for:"
                               + f"\n\t host: {response.get('name', None)}"
                               + f"\n\tmodel: {response.get('model', None)}")
-        for p in response['port_stat']:
-            device = f"port{p['port']}"
-            self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
-            self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
-            self.add_field_value('errors', int(p['error']), device=device)
+        connected_ports = set()
         for p in response['speed_stat']:
             device = f"port{p['port']}"
             speed = p['speed']
             if speed == PslTypSpeedStat.SPEED_1G:
                 self.add_field_value('link', 1000, unit='mbit', device=device)
+                connected_ports.add(device)
             elif speed == PslTypSpeedStat.SPEED_100MH or speed == PslTypSpeedStat.SPEED_100ML:
                 self.add_field_value('link', 100, unit='mbit', device=device)
+                connected_ports.add(device)
             elif speed == PslTypSpeedStat.SPEED_10MH or speed == PslTypSpeedStat.SPEED_10ML:
                 self.add_field_value('link', 10, unit='mbit', device=device)
+                connected_ports.add(device)
             else:
                 self.add_field_value('link', 0, unit='mbit', device=device)
+        for p in response['port_stat']:
+            device = f"port{p['port']}"
+            if device in connected_ports:
+                self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
+                self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
+                self.add_field_value('errors', int(p['error']), device=device)
 
 
 class CheckUPS(Check):
