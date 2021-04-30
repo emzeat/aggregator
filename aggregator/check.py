@@ -521,6 +521,7 @@ class CheckNetgearGS108Ev2(Check):
         self.interface = config['interface']
         self.switch_mac = config['switch']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
+        self.ports = config.get('ports', None)
 
     def on_run(self):
         from .psl_class import ProSafeLinux
@@ -535,10 +536,13 @@ class CheckNetgearGS108Ev2(Check):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Status for:"
                               + f"\n\t host: {response.get('name', None)}"
-                              + f"\n\tmodel: {response.get('model', None)}")
+                              + f"\n\tmodel: {response.get('model', None)}"
+                              + f"\n\t{response}")
         connected_ports = set()
         for p in response['speed_stat']:
             device = f"port{p['port']}"
+            if self.ports and device not in self.ports:
+                continue
             speed = p['speed']
             if speed == PslTypSpeedStat.SPEED_1G:
                 self.add_field_value('link', 1000, unit='mbit', device=device)
