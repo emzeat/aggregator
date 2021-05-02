@@ -363,20 +363,21 @@ class CheckCpu(Check):
         super().__init__(name='cpu', config=config)
 
     def on_run(self):
-        times = psutil.cpu_times()
-        self.add_field_value('user', times.user, 'seconds')
-        self.add_field_value('system', times.system, 'seconds')
-        self.add_field_value('idle', times.idle, 'seconds')
+        cpu_count = psutil.cpu_count()
+        times = psutil.cpu_times(percpu=False)
+        self.add_field_value('user', times.user / cpu_count, 'seconds')
+        self.add_field_value('system', times.system / cpu_count, 'seconds')
+        self.add_field_value('idle', times.idle / cpu_count, 'seconds')
         try:
-            self.add_field_value('iowait', times.iowait, 'seconds')
+            self.add_field_value('iowait', times.iowait / cpu_count, 'seconds')
         except AttributeError:
             pass
         try:
-            self.add_field_value('irq', times.irq + times.softirq, 'seconds')
+            self.add_field_value('irq', (times.irq + times.softirq) / cpu_count, 'seconds')
         except AttributeError:
             pass
 
-        avg = [x / psutil.cpu_count() * 100 for x in psutil.getloadavg()]
+        avg = [x / cpu_count * 100 for x in psutil.getloadavg()]
         self.add_field_value('avg_1min', avg[0], '%')
         self.add_field_value('avg_5min', avg[1], '%')
         self.add_field_value('avg_15min', avg[2], '%')
