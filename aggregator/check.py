@@ -73,7 +73,7 @@ class Check:
         self.results = []
         self.field_values = defaultdict(list)
 
-    def __init__(self, name: str, config: dict, default_interval: datetime.timedelta = None):
+    def __init__(self, name: str, config: dict, default_interval: int = None):
         """Constructs a new Check instance
 
         Implementations may check one or more values on host
@@ -127,11 +127,13 @@ class Check:
         now = datetime.datetime.utcnow()
         if self.interval:
             last = self.last_state.get(LAST_RUN, None)
-            if last and last + self.interval < now:
-                self.logger.debug(f'Next check due at {now + self.interval}')
-                return self.results
-            elif last:
-                self.logger.debug(f'Run check - expired at {last + self.interval}')
+            if last:
+                due = last + datetime.timedelta(seconds=self.interval)
+                if due > now:
+                    self.logger.debug(f'Next check due in {due - now}')
+                    return self.results
+                else:
+                    self.logger.debug(f'Run check - expired {now - due} ago')
             else:
                 self.logger.debug('Run check - never executed before')
         else:

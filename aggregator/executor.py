@@ -37,9 +37,11 @@ class Executor:
     def run(self):
         self.logger.info(f"Will run checks every {self.interval}")
         while True:
-            now = datetime.datetime.now()
+            begin = datetime.datetime.now()
             self.cycle()
-            remaining = int((self.interval - (datetime.datetime.now() - now)).total_seconds())
-            self.logger.info(f"{remaining} seconds until next iteration")
-            if remaining > 0:
-                time.sleep(remaining)
+            end = datetime.datetime.now()
+            remaining = self.interval - (end - begin)
+            remaining_s = remaining.seconds + remaining.microseconds / (1000.0*1000.0)
+            self.logger.info(f"{remaining} until next iteration")
+            if remaining_s > 0:
+                time.sleep(remaining_s)
