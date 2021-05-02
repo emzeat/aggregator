@@ -5,16 +5,20 @@ import logging
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-from .check import Check
+from .check import Check, merge_dict
 
 
 class Output:
+    CONFIG = {}
+
     @abc.abstractmethod
     def write(self, results: dict):
         pass
 
 
 class OutputStdout(Output):
+    """Write check results to stdout"""
+
     def __init__(self, config):
         pass
 
@@ -26,6 +30,13 @@ class OutputStdout(Output):
 
 
 class OutputInfluxDb(Output):
+    CONFIG = merge_dict(Output.CONFIG, {
+        'token': 'str: Token to authenticate with the influxdb instance',
+        'org': 'str: Organization to use in the influxdb instance',
+        'bucket': 'str: Bucket to store the check results in',
+        'url': 'str: Url to connect to the influxdb instance'
+    })
+    """Send check results to an influxdb instance"""
 
     def __init__(self, config):
         self.logger = logging.getLogger("aggregator.output.influxdb")

@@ -5,11 +5,6 @@ import time
 from .check import Check
 from .output import Output
 
-DEFAULT_CONFIG = {
-    Check.Config.HOST: ''
-}
-
-
 class Executor:
     """Collection of checks"""
 

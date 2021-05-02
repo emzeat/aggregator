@@ -13,6 +13,13 @@ LAST_RUN = "last-check"
 CHECK_TIMEOUT_S = 5
 
 
+def merge_dict(a: dict, b: dict):
+    """Helper to merge_dict two dicts prior to python 3.9+"""
+    c = a.copy()
+    c.update(b)
+    return c
+
+
 class Check:
     """Abstract base for a check
 
@@ -39,6 +46,11 @@ class Check:
         }
     """
 
+    CONFIG = {
+        'host': 'str: Name of the host for which the checks apply',
+        'interval': 'seconds: Minimum interval between runs of the check. Default: 0'
+    }
+
     class Result:
         """Keys in a result dictionary"""
         HOST = 'host'  # the name of the targeted host
@@ -54,12 +66,6 @@ class Check:
         UNIT = 'unit'  # the unit in which value is provided
         MIN = 'min'  # the value below which the measurement failed
         MAX = 'max'  # the value above which the measurement failed
-
-    class Config:
-        """Fields in a config dictionary"""
-        INTERVAL = 'interval'
-        TYPE = 'type'
-        HOST = 'host'
 
     DEFAULT_DEVICE = ''
 
@@ -82,8 +88,8 @@ class Check:
         self.host = config['host']
         self.logger.info(f"New instance monitoring '{self.host}'")
         self.logger = logging.getLogger(f"aggregator.check.{name}({self.host})")
-        self.interval = config.get(Check.Config.INTERVAL, default_interval)
-        self.host = config[Check.Config.HOST]
+        self.interval = config.get('interval', default_interval)
+        self.host = config['host']
         self.last_state = {}
         self._reset()
 
@@ -147,6 +153,11 @@ class Check:
 
 class CheckFritzBox(Check):
     """Fetch status from an AVM Fritz!Box"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'username': 'str: Name of the Fritz!Box user to use for login',
+        'password': 'str: Password of the Fritz!Box user to use for login',
+        'timeout': f'seconds: Timeout after which a connection attempt is aborted. Default: {CHECK_TIMEOUT_S}',
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -193,11 +204,14 @@ RE_TIME = r'time=([0-9]+\.[0-9]+)'
 
 class CheckPing(Check):
     """Try to ping a host using both IPv4 and IPv6"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'timeout': f'seconds: Maximum time to wait for the host to respond to the ping. Default {CHECK_TIMEOUT_S}'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='ping', config=config)
-        self.timeout = config.get('timeout', 5)
+        self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
 
     def ping(self, command='ping', check='ping'):
         try:
@@ -216,7 +230,11 @@ class CheckPing(Check):
 
 
 class CheckDns(Check):
-    """Verify host is providing DNS services"""
+    """Verify host is providing DNS services. Tested by querying A and AAAA records for a domain."""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'domain': 'str: The domain to fetch A and AAAA records for',
+        'timeout': f'seconds: Maximum time to wait for the host to resolve the domain. Default {CHECK_TIMEOUT_S}'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -254,6 +272,9 @@ class CheckDns(Check):
 
 class CheckPihole(CheckDns):
     """Verify pihole host is providing DNS services"""
+    CONFIG = merge_dict(CheckDns.CONFIG, {
+        'pihole': 'str: API url to query current statistics from a pihole instance. Default is to skip.'
+    })
 
     def __init__(self, config: dict):
         super().__init__(config=config)
@@ -277,11 +298,19 @@ class CheckPihole(CheckDns):
 
 class CheckHttp(Check):
     """Verify a http host is reachable and has a valid certificate"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'timeout': f'seconds: Time to wait for the request to complete before aborting. Default {CHECK_TIMEOUT_S}',
+        'verify_tls': 'bool: Controls if certificates are verified. Default: True',
+        'match': 'str: Optional string to match the response contents against. Default: None',
+        'cname': 'str: Actual hostname to connect for making the request. The request itself will still request '
+                 'contents for the url selected in "host". Use this to verify a vhost configuration. Default: None',
+        'expect_status': 'int: Response code to consider a successful request. Default 200'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='http', config=config)
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
-        self.verify = config.get('verify', True)
+        self.verify_tls = config.get('verify_tls', True)
         self.match = config.get('match', None)
         self.cname = config.get('cname', None)
         self.expect_status = config.get('expect_status', 200)
@@ -293,16 +322,18 @@ class CheckHttp(Check):
         start = datetime.datetime.now()
         orig_getaddrinfo = socket.getaddrinfo
 
-        def force_address_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-            self.logger.debug(f"Forcing connection to {host} via {self.cname}")
-            ret = orig_getaddrinfo(self.cname, port, family, type, proto, flags)
+        def force_address_getaddrinfo(original_host, original_port, original_family=0,
+                                      original_type=0, original_proto=0, original_flags=0):
+            self.logger.debug(f"Forcing connection to {original_host} via {self.cname}")
+            ret = orig_getaddrinfo(self.cname, original_port, original_family,
+                                   original_type, original_proto, original_flags)
             self.logger.debug(f"{self.cname} resolves to {ret}")
             return ret
 
         try:
             if self.cname:
                 socket.getaddrinfo = force_address_getaddrinfo
-            r = requests.get(host, timeout=self.timeout, verify=self.verify)
+            r = requests.get(host, timeout=self.timeout, verify=self.verify_tls)
             socket.getaddrinfo = orig_getaddrinfo
         except requests.exceptions.ConnectionError as e:
             socket.getaddrinfo = orig_getaddrinfo
@@ -399,6 +430,9 @@ class CheckSensors(Check):
 
 class CheckNetwork(Check):
     """Measure system resources"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'interfaces': 'str[]: List of interface names to limit the checks to. Defaults to all interfaces.'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='network', config=config)
@@ -428,6 +462,9 @@ class CheckNetwork(Check):
 
 class CheckDisks(Check):
     """Measure system resources"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'mounts': 'str[]: Array of mount points to have their usage reported. Defaults to none.'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='disks', config=config)
@@ -453,12 +490,17 @@ class CheckDisks(Check):
 
 class CheckDiskSpindown(Check):
     """Measure spindown status of disks"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'disks': 'str[]: List of disk entries below /dev to check the spindown status for',
+        'smartctl': 'str: Path to the smartctl utility. Default /sbin/smartctl',
+        'timeout': f'seconds: Time after which to abort the smartctl run. Default {CHECK_TIMEOUT_S}'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='spindown', config=config)
         self.disks = config['disks']
         self.smartctl = config.get('smartctl', '/sbin/smartctl')
-        self.timeout = config.get('timeout', 5)
+        self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
 
     def report_disk(self, disk):
         try:
@@ -486,6 +528,11 @@ class CheckNetgearGS108E(Check):
 
     Requires client built from https://github.com/AlbanBedel/libnsdp
     """
+    CONFIG = merge_dict(Check.CONFIG, {
+        'source': 'str: MAC address of the network interface to send from',
+        'switch': 'str: MAC address of the switch to be queried',
+        'nsdp_client': 'str: Path to the nsdp_client build from https://github.com/AlbanBedel/libnsdp'
+    })
 
     # https://github.com/AlbanBedel/libnsdp/blob/master/nsdp_properties.h
     PROPERTY_MODEL = '0x0001'
@@ -545,6 +592,12 @@ class CheckNetgearGS108Ev2(Check):
 
     Uses python implementation of NSDP from https://github.com/Z3po/ProSafeLinux
     """
+    CONFIG = merge_dict(Check.CONFIG, {
+        'interface': 'str: Name of the network interface to send from',
+        'switch': 'str: MAC address of the switch to be queried',
+        'timeout': f'seconds: Timeout after which a query is aborted. Default {CHECK_TIMEOUT_S}',
+        'ports': 'str[]: Name of ports to report stats for. Defaults to all'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='gs108e', config=config)
@@ -595,6 +648,11 @@ class CheckNetgearGS108Ev2(Check):
 
 class CheckUPS(Check):
     """Check a UPS using NUT"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'ups': 'str: Name of the ups as reported by NUT',
+        'username': 'str: Username to connect to NUT',
+        'password': 'str: Password to connect to NUT'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -631,6 +689,9 @@ class CheckUPS(Check):
 
 class CheckDocker(Check):
     """Check load of docker containers"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'url': 'str: Url to use for connecting to the docker daemon. Default is derived from env automatically'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -719,6 +780,9 @@ class CheckDockerV2(Check):
 
     Optimized for performance when comparing to V1
     """
+    CONFIG = merge_dict(Check.CONFIG, {
+        'url': 'str: Url to use for connecting to the docker daemon. Default is derived from env automatically'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -737,6 +801,7 @@ class CheckDockerV2(Check):
 
         class Container:
             """Efficient storage of a running container"""
+
             def __init__(self, api_container):
                 self.name = api_container.name
                 self.id = api_container.id
