@@ -795,6 +795,7 @@ class CheckDockerV2(Check):
         self.docker_client = docker.DockerClient
         self.docker_from_env = docker.from_env
         self._fetch_containers()
+        self.cpu_count = psutil.cpu_count()
 
     def _fetch_containers(self):
         if self.url:
@@ -848,9 +849,9 @@ class CheckDockerV2(Check):
                 self.add_field_value('memory', int(sysfs_memory['total_rss']), 'bytes', device=name)
             sysfs_cpu = self.read_sysfs_node(f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
             if sysfs_cpu:
-                ns_per_second = 1000000.0
-                cpu_total_ns = float(sysfs_cpu['user']) + float(sysfs_cpu['system'])
-                self.add_field_value('cpu', cpu_total_ns / ns_per_second, 'seconds', device=name)
+                userhz_2_s = 1.0 / 100.0
+                cpu_total_userhz = float(sysfs_cpu['user']) + float(sysfs_cpu['system'])
+                self.add_field_value('cpu', cpu_total_userhz * userhz_2_s / self.cpu_count, 'seconds', device=name)
             sysfs_io_bytes = self.read_sysfs_node(
                 f"/sys/fs/cgroup/blkio/docker/{container.id}/blkio.throttle.io_service_bytes", key_index=1)
             if sysfs_io_bytes:
