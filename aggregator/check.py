@@ -466,13 +466,26 @@ class CheckNetwork(Check):
 
 class CheckDisks(Check):
     """Measure system resources"""
-    CONFIG = merge_dict(Check.CONFIG, {
-        'mounts': 'str[]: Array of mount points to have their usage reported. Defaults to none.'
-    })
 
     def __init__(self, config: dict):
         super().__init__(name='disks', config=config)
-        self.mounts = config.get('mounts', [])
+
+    def on_run(self):
+        counters = psutil.disk_io_counters(perdisk=True)
+        for p, c in counters.items():
+            self.add_field_value('read', c.read_bytes, 'bytes', device=p)
+            self.add_field_value('write', c.write_bytes, 'bytes', device=p)
+
+
+class CheckMounts(Check):
+    """Measure system resources"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'mounts': 'str[]: Array of mount points to have their usage reported.'
+    })
+
+    def __init__(self, config: dict):
+        super().__init__(name='mounts', config=config)
+        self.mounts = config['mounts']
 
     def report_mountpoint(self, mount):
         try:
@@ -485,9 +498,6 @@ class CheckDisks(Check):
             self.logger.warning(f"No such mount: {mount}")
 
     def on_run(self):
-        counters = psutil.disk_io_counters()
-        self.add_field_value('read', counters.read_bytes, 'bytes')
-        self.add_field_value('write', counters.write_bytes, 'bytes')
         for m in self.mounts:
             self.report_mountpoint(m)
 
@@ -925,6 +935,7 @@ CHECKS = {
     'sensors': CheckSensors,
     'network': CheckNetwork,
     'disks': CheckDisks,
+    'mounts': CheckMounts,
     'gs108e': CheckNetgearGS108Ev2,
     'ups': CheckUPS,
     'docker': CheckDockerV2,
