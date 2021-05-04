@@ -466,13 +466,19 @@ class CheckNetwork(Check):
 
 class CheckDisks(Check):
     """Measure system resources"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'devices': 'str[]: List of disk names (without the leading /dev/) to be reported. Defaults to all'
+    })
 
     def __init__(self, config: dict):
         super().__init__(name='disks', config=config)
+        self.devices = config.get('devices', None)
 
     def on_run(self):
         counters = psutil.disk_io_counters(perdisk=True)
         for p, c in counters.items():
+            if self.devices and p not in self.devices:
+                continue
             self.add_field_value('read', c.read_bytes, 'bytes', device=p)
             self.add_field_value('write', c.write_bytes, 'bytes', device=p)
 
