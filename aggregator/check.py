@@ -5,6 +5,8 @@ import pathlib
 import socket
 import subprocess
 import re
+import sys
+
 import requests
 import dns.rdatatype
 import psutil
@@ -12,6 +14,7 @@ from collections import defaultdict
 
 LAST_RUN = "last-check"
 CHECK_TIMEOUT_S = 5
+CHECK_ERROR_S = float(9999999.99)
 
 
 def merge_dict(a: dict, b: dict):
@@ -208,24 +211,26 @@ RE_TIME = r'time=([0-9]+\.[0-9]+)'
 class CheckPing(Check):
     """Try to ping a host using both IPv4 and IPv6"""
     CONFIG = merge_dict(Check.CONFIG, {
-        'timeout': f'seconds: Maximum time to wait for the host to respond to the ping. Default {CHECK_TIMEOUT_S}'
+        'timeout': f'seconds: Maximum time to wait for the host to respond to the ping. Default {CHECK_TIMEOUT_S}',
+        'ip': 'str: IP address to ping instead of resolving the configured host'
     })
 
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='ping', config=config)
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
+        self.address = config.get('ip', config['host'])
 
     def ping(self, command='ping', check='ping'):
         try:
-            out = subprocess.check_output([command, '-c', '1', self.host], stderr=subprocess.STDOUT,
+            out = subprocess.check_output([command, '-c', '1', self.address], stderr=subprocess.STDOUT,
                                           encoding='utf-8', timeout=self.timeout)
             time = float(re.search(RE_TIME, out)[1])
             self.add_field_value(field='duration', value=time, unit='ms', device=check)
         except subprocess.CalledProcessError:
-            self.add_field_value(field='duration', value=0.0, unit='ms', device=check)
+            self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
         except subprocess.TimeoutExpired:
-            self.add_field_value(field='duration', value=0.0, unit='ms', device=check)
+            self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
 
     def on_run(self):
         self.ping(command='ping', check='ipv4')
@@ -260,13 +265,13 @@ class CheckDns(Check):
             if answers:
                 self.add_field_value("duration", (end - start).total_seconds() * 1000.0, "ms", device=device)
             else:
-                self.add_field_value("duration", 0.0, "ms", device=device)
+                self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
         except dns.rdatatype.UnknownRdatatype:
-            self.add_field_value("duration", 0.0, "ms", device=device)
+            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
         except dns.resolver.NoNameservers:
-            self.add_field_value("duration", 0.0, "ms", device=device)
+            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
         except dns.exception.Timeout:
-            self.add_field_value("duration", 0.0, "ms", device=device)
+            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
 
     def on_run(self):
         self.measure_record_type('A')
@@ -340,7 +345,7 @@ class CheckHttp(Check):
             socket.getaddrinfo = orig_getaddrinfo
         except requests.exceptions.ConnectionError as e:
             socket.getaddrinfo = orig_getaddrinfo
-            self.add_field_value('duration', 0.0, 'ms')
+            self.add_field_value('duration', CHECK_ERROR_S, 'ms')
             self.logger.debug(f"Request failed: {e}")
             return
         end = datetime.datetime.now()
@@ -349,12 +354,12 @@ class CheckHttp(Check):
         self.logger.debug(f"Request completed: {r.status_code}")
         if self.expect_status == r.status_code:
             if self.match and self.match not in r.text:
-                self.add_field_value('duration', 0.0, 'ms')
+                self.add_field_value('duration', CHECK_ERROR_S, 'ms')
                 return
             self.add_field_value('duration', duration, 'ms')
         else:
             self.logger.warning(f"Expected {self.expect_status} but got {r.status_code}")
-            self.add_field_value('duration', 0.0, 'ms')
+            self.add_field_value('duration', CHECK_ERROR_S, 'ms')
 
 
 class CheckCpu(Check):
