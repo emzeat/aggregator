@@ -653,18 +653,19 @@ class CheckNetgearGS108Ev2(Check):
             speed = p['speed']
             if speed == PslTypSpeedStat.SPEED_1G:
                 self.add_field_value('link', 1000, unit='mbit', device=device)
-                connected_ports.add(device)
+                connected_ports.add(port)
             elif speed == PslTypSpeedStat.SPEED_100MH or speed == PslTypSpeedStat.SPEED_100ML:
                 self.add_field_value('link', 100, unit='mbit', device=device)
-                connected_ports.add(device)
+                connected_ports.add(port)
             elif speed == PslTypSpeedStat.SPEED_10MH or speed == PslTypSpeedStat.SPEED_10ML:
                 self.add_field_value('link', 10, unit='mbit', device=device)
-                connected_ports.add(device)
+                connected_ports.add(port)
             else:
                 self.add_field_value('link', 0, unit='mbit', device=device)
         for p in response['port_stat']:
+            port = int(p['port'])
             device = self.device_name(port)
-            if device in connected_ports:
+            if port in connected_ports:
                 self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
                 self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
                 self.add_field_value('errors', int(p['error']), device=device)
