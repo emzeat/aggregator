@@ -5,7 +5,6 @@ import pathlib
 import socket
 import subprocess
 import re
-import sys
 
 import requests
 import dns.rdatatype
@@ -52,7 +51,9 @@ class Check:
 
     CONFIG = {
         'host': 'str: Name of the host for which the checks apply',
-        'interval': 'seconds: Minimum interval between runs of the check. Default: 0'
+        'interval': 'seconds: Minimum interval between runs of the check. Default: 0',
+        'min': 'float: Minimum below which a measurement is considered as failed',
+        'max': 'float: Maximum above which a measurement is considered as failed'
     }
 
     class Result:
@@ -918,7 +919,7 @@ class CheckAge(Check):
 
     def __init__(self, config: dict):
         """Constructor"""
-        super().__init__(name='docker', config=config)
+        super().__init__(name='age', config=config)
         self.file = pathlib.Path(config['path'])
         self.formatstr = config.get('format', CheckAge.DEFAULT_FORMAT)
 
@@ -933,7 +934,9 @@ class CheckAge(Check):
         if self.file.exists():
             time = datetime.datetime.strptime(self.file.read_text().strip(), self.formatstr)
             now = datetime.datetime.now()
-            self.add_field_value(self.file.name, (now - time).total_seconds(), 'seconds')
+            self.add_field_value('age', (now - time).total_seconds(), 'seconds', device=self.file.name)
+        else:
+            self.add_field_value('age', CHECK_ERROR_S, 'seconds', device=self.file.name)
 
 
 CHECKS = {
