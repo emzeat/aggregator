@@ -599,7 +599,9 @@ class CheckNetgearGS108Ev2(Check):
         'interface': 'str: Name of the network interface to send from',
         'switch': 'str: MAC address of the switch to be queried',
         'timeout': f'seconds: Timeout after which a query is aborted. Default {CHECK_TIMEOUT_S}',
-        'ports': 'str[]: Name of ports to report stats for. Defaults to all'
+        'ports': 'int[]: Index of ports to report stats for starting at 1. Defaults to all',
+        'names': 'str[]: Array of strings to assign to ports, the first entry defines port 1 etc.'
+                 + 'Defaults to "port1", "port2",...'
     })
 
     def __init__(self, config: dict):
@@ -608,6 +610,13 @@ class CheckNetgearGS108Ev2(Check):
         self.switch_mac = config['switch']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
         self.ports = config.get('ports', None)
+        self.names = config.get('names', [])
+
+    def device_name(self, port):
+        if port <= len(self.names):
+            return self.names[port-1]
+        else:
+            return f"port{port}"
 
     def on_run(self):
         from .psl_class import ProSafeLinux
@@ -626,8 +635,9 @@ class CheckNetgearGS108Ev2(Check):
                               + f"\n\t{response}")
         connected_ports = set()
         for p in response['speed_stat']:
-            device = f"port{p['port']}"
-            if self.ports and device not in self.ports:
+            port = int(p['port'])
+            device = self.device_name(port)
+            if self.ports and port not in self.ports:
                 continue
             speed = p['speed']
             if speed == PslTypSpeedStat.SPEED_1G:
@@ -642,7 +652,7 @@ class CheckNetgearGS108Ev2(Check):
             else:
                 self.add_field_value('link', 0, unit='mbit', device=device)
         for p in response['port_stat']:
-            device = f"port{p['port']}"
+            device = self.device_name(port)
             if device in connected_ports:
                 self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
                 self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
