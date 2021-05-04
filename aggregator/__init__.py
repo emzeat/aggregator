@@ -7,12 +7,16 @@ import datetime
 from .executor import Executor
 from .check import Check, CHECKS, merge_dict, CheckAge
 from .output import Output, OUTPUTS
+from .notification import MailNotification
 
 
 def main():
     parser = argparse.ArgumentParser(description='Lightweight system monitoring daemon')
     parser.add_argument('-v', '--verbose', help='Enable verbose logging', action='store_true', default=False)
     parser.add_argument('-c', '--config', help='JSON config file to load', required=False)
+    parser.add_argument('-m', '--message', help='JSON string used to send a message with the given "contents" and '
+                                                '"subject" using the configured notification channel',
+                        required=False, default=None)
     parser.add_argument('--touch', help='Updates the timestamp stored at the given path, compatible to the "age" check', required=False, default=None)
     parser.add_argument('--dump', help='Dump reference documentation with explanations for all entries to stdout',
                         action='store_true')
@@ -50,6 +54,20 @@ def main():
     if not isinstance(config, dict):
         logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
         sys.exit(1)
+
+    if 'notification' in config:
+        notification = MailNotification(config['notification'])
+
+    if args.message:
+        try:
+            message = json.loads(args.message)
+            subject = message['subject']
+            contents = message['contents']
+        except json.JSONDecodeError:
+            subject = args.message
+            contents = args.message
+        notification.send_message(subject, contents)
+        sys.exit(0)
 
     engine = Executor(interval=datetime.timedelta(seconds=config.get('interval', 30)))
     for entry in config.get('checks', []):
