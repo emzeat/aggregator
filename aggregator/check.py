@@ -1,6 +1,7 @@
 import abc
 import datetime
 import logging
+import pathlib
 import socket
 import subprocess
 import re
@@ -614,7 +615,7 @@ class CheckNetgearGS108Ev2(Check):
 
     def device_name(self, port):
         if port <= len(self.names):
-            return self.names[port-1]
+            return self.names[port - 1]
         else:
             return f"port{port}"
 
@@ -882,6 +883,37 @@ class CheckDockerV2(Check):
                     self.add_field_value('sent', sent, 'bytes', device=name)
 
 
+class CheckAge(Check):
+    """Check time elapsed since a timestamp
+
+    Formatting is controlled as in https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
+    """
+    CONFIG = merge_dict(Check.CONFIG, {
+        'path': 'str: Path to a file containing a string which can be parsed by datetime.strptime',
+        'format': 'str: Format to use for parsing the datestring in file. Defaults to the format used by CheckAge.touch'
+    })
+    DEFAULT_FORMAT = '%H:%M:%S %d.%m.%Y'
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='docker', config=config)
+        self.file = pathlib.Path(config['path'])
+        self.formatstr = config.get('format', CheckAge.DEFAULT_FORMAT)
+
+    @staticmethod
+    def touch(file, formatstr=DEFAULT_FORMAT):
+        now = datetime.datetime.now()
+        file = pathlib.Path(file)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(now.strftime(formatstr))
+
+    def on_run(self):
+        if self.file.exists():
+            time = datetime.datetime.strptime(self.file.read_text().strip(), self.formatstr)
+            now = datetime.datetime.now()
+            self.add_field_value(self.file.name, (now - time).total_seconds(), 'seconds')
+
+
 CHECKS = {
     'dns': CheckPihole,
     'fritzbox': CheckFritzBox,
@@ -896,5 +928,6 @@ CHECKS = {
     'gs108e': CheckNetgearGS108Ev2,
     'ups': CheckUPS,
     'docker': CheckDockerV2,
-    'spindown': CheckDiskSpindown
+    'spindown': CheckDiskSpindown,
+    'age': CheckAge
 }

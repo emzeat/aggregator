@@ -5,7 +5,7 @@ import sys
 import datetime
 
 from .executor import Executor
-from .check import Check, CHECKS, merge_dict
+from .check import Check, CHECKS, merge_dict, CheckAge
 from .output import Output, OUTPUTS
 
 
@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description='Lightweight system monitoring daemon')
     parser.add_argument('-v', '--verbose', help='Enable verbose logging', action='store_true', default=False)
     parser.add_argument('-c', '--config', help='JSON config file to load', required=False)
+    parser.add_argument('--touch', help='Updates the timestamp stored at the given path, compatible to the "age" check', required=False, default=None)
     parser.add_argument('--dump', help='Dump reference documentation with explanations for all entries to stdout',
                         action='store_true')
     args = parser.parse_args()
@@ -31,6 +32,10 @@ def main():
             'outputs': [merge_dict({'type': key, 'desc': cls.__doc__}, cls.CONFIG) for key, cls in OUTPUTS.items()]
         }
         print(json.dumps(reference, indent=2))
+        sys.exit(0)
+
+    if args.touch:
+        CheckAge.touch(args.touch)
         sys.exit(0)
 
     if not args.config:
