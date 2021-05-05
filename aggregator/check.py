@@ -494,7 +494,7 @@ class CheckDisks(Check):
                     actual = pathlib.Path(os.readlink(base))
                 else:
                     actual = base
-                resolved[base.name] = actual.name
+                resolved[actual.name] = base.name
             self.devices = resolved
             self.logger.debug(f"Tracking {self.devices}")
 
