@@ -183,6 +183,12 @@ class CheckFritzBox(Check):
             self.add_field_value('active', True if 'Up' == status['NewStatus'] else False, device=band)
         except FritzServiceError:
             pass
+        try:
+            stats = self.connection.call_action(f'WLANConfiguration{service.service}', 'GetPacketStatistics')
+            self.add_field_value('sent', stats['NewTotalPacketsSent'], 'packets', device=band)
+            self.add_field_value('recv', stats['NewTotalPacketsReceived'], 'packets', device=band)
+        except FritzServiceError:
+            pass
         active_clients = len([c for c in service.get_hosts_info() if c['status']])
         self.add_field_value('clients', active_clients, device=band)
 
