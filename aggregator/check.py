@@ -479,20 +479,36 @@ class CheckNetwork(Check):
 class CheckDisks(Check):
     """Measure system resources"""
     CONFIG = merge_dict(Check.CONFIG, {
-        'devices': 'str[]: List of disk names (without the leading /dev/) to be reported. Defaults to all'
+        'devices': 'str[]: List of disk names to be reported. Defaults to all'
     })
 
     def __init__(self, config: dict):
         super().__init__(name='disks', config=config)
         self.devices = config.get('devices', None)
+        if self.devices:
+            resolved = dict()
+            for p in self.devices:
+                base = pathlib.Path(p)
+                if base.is_symlink():
+                    actual = pathlib.Path(base.readlink())
+                else:
+                    actual = base
+                resolved[base.name] = actual.name
+            self.devices = resolved
+            self.logger.debug(f"Tracking {self.devices}")
 
     def on_run(self):
         counters = psutil.disk_io_counters(perdisk=True)
         for p, c in counters.items():
-            if self.devices and p not in self.devices:
-                continue
-            self.add_field_value('read', c.read_bytes, 'bytes', device=p)
-            self.add_field_value('write', c.write_bytes, 'bytes', device=p)
+            device = p
+            if self.devices:
+                if p not in self.devices:
+                    self.logger.debug(f"Skipping {p}")
+                    continue
+                else:
+                    device = self.devices[p]
+            self.add_field_value('read', c.read_bytes, 'bytes', device=device)
+            self.add_field_value('write', c.write_bytes, 'bytes', device=device)
 
 
 class CheckMounts(Check):
@@ -535,18 +551,19 @@ class CheckDiskSpindown(Check):
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
 
     def report_disk(self, disk):
+        name = pathlib.Path(disk).name
         try:
             out = subprocess.check_output([self.smartctl, '-i', '-n', 'standby', disk],
                                           stderr=subprocess.STDOUT,
                                           encoding='utf-8', timeout=self.timeout)
             if 'STANDBY mode' in out:
                 # just a double net, we should get a returncode of 2 and end up below
-                self.add_field_value(field='standby', value=1, device=disk)
+                self.add_field_value(field='standby', value=1, device=name)
             else:
-                self.add_field_value(field='standby', value=0, device=disk)
+                self.add_field_value(field='standby', value=0, device=name)
         except subprocess.CalledProcessError as error:
             if 2 == error.returncode:
-                self.add_field_value(field='standby', value=1, device=disk)
+                self.add_field_value(field='standby', value=1, device=name)
             else:
                 raise
 
