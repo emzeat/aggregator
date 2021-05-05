@@ -962,6 +962,21 @@ class CheckAge(Check):
             self.add_field_value('age', CHECK_ERROR_S, 'seconds', device=self.file.name)
 
 
+class CheckSystem(Check):
+    """Data on the system like uptime and active users
+    """
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='system', config=config)
+
+    def on_run(self):
+        boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
+        now = datetime.datetime.now()
+        self.add_field_value('uptime', (now - boot_time).total_seconds(), 'seconds')
+        self.add_field_value('active_users', len(psutil.users()))
+
+
 CHECKS = {
     'dns': CheckPihole,
     'fritzbox': CheckFritzBox,
@@ -978,5 +993,6 @@ CHECKS = {
     'ups': CheckUPS,
     'docker': CheckDockerV2,
     'spindown': CheckDiskSpindown,
-    'age': CheckAge
+    'age': CheckAge,
+    'system': CheckSystem
 }
