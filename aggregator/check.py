@@ -5,6 +5,7 @@ import pathlib
 import socket
 import subprocess
 import re
+import os
 
 import requests
 import dns.rdatatype
@@ -490,7 +491,7 @@ class CheckDisks(Check):
             for p in self.devices:
                 base = pathlib.Path(p)
                 if base.is_symlink():
-                    actual = pathlib.Path(base.readlink())
+                    actual = pathlib.Path(os.readlink(base))
                 else:
                     actual = base
                 resolved[base.name] = actual.name
