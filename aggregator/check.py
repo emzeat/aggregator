@@ -14,7 +14,7 @@ from collections import defaultdict
 
 LAST_RUN = "last-check"
 CHECK_TIMEOUT_S = 5
-CHECK_ERROR_S = float(9999999.99)
+CHECK_ERROR_S = float(0.0)
 
 
 def merge_dict(a: dict, b: dict):
@@ -335,6 +335,10 @@ class CheckHttp(Check):
         host = self.host
         if not host.startswith('https:'):
             host = 'https://' + host
+        if self.cname:
+            device = self.cname
+        else:
+            device = Check.DEFAULT_DEVICE
         start = datetime.datetime.now()
         orig_getaddrinfo = socket.getaddrinfo
 
@@ -353,21 +357,21 @@ class CheckHttp(Check):
             socket.getaddrinfo = orig_getaddrinfo
         except requests.exceptions.ConnectionError as e:
             socket.getaddrinfo = orig_getaddrinfo
-            self.add_field_value('duration', CHECK_ERROR_S, 'ms')
+            self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
             self.logger.debug(f"Request failed: {e}")
             return
         end = datetime.datetime.now()
         duration = (end - start).total_seconds() * 1000.0
-        self.add_field_value('status_code', r.status_code)
+        self.add_field_value('status_code', r.status_code, device=device)
         self.logger.debug(f"Request completed: {r.status_code}")
         if self.expect_status == r.status_code:
             if self.match and self.match not in r.text:
-                self.add_field_value('duration', CHECK_ERROR_S, 'ms')
+                self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
                 return
-            self.add_field_value('duration', duration, 'ms')
+            self.add_field_value('duration', duration, 'ms', device=device)
         else:
             self.logger.warning(f"Expected {self.expect_status} but got {r.status_code}")
-            self.add_field_value('duration', CHECK_ERROR_S, 'ms')
+            self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
 
 
 class CheckCpu(Check):
