@@ -31,7 +31,7 @@ From: "{self.from_sender}" <{self.from_address}>
             conn = SMTP(self.server, self.port)
             if self.use_tls:
                 conn.starttls()
-        conn.set_debuglevel(True)
+        conn.set_debuglevel(False)
         if self.user and self.password:
             conn.login(self.user, self.password)
         try:

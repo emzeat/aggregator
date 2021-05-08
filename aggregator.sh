@@ -18,4 +18,4 @@ else
     python3 -m pip install -r requirements.txt
 fi
 
-python3 -m aggregator $@
+python3 -m aggregator "$@"
