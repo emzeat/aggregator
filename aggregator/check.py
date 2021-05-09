@@ -196,15 +196,16 @@ class CheckFritzBox(Check):
     def on_run(self):
         from fritzconnection.lib.fritzstatus import FritzStatus
         status = FritzStatus(fc=self.connection)
-        self.add_field_value('online', status.is_connected)
+        internet_device = 'wan'
+        self.add_field_value('online', status.is_connected, device=internet_device)
         links = status.max_linked_bit_rate
-        self.add_field_value('link_upload', links[0], unit='bits/sec')
-        self.add_field_value('link_download', links[1], unit='bits/sec')
+        self.add_field_value('link_upload', links[0], unit='bits/sec', device=internet_device)
+        self.add_field_value('link_download', links[1], unit='bits/sec', device=internet_device)
         rates = status.transmission_rate
-        self.add_field_value('upload', rates[0], unit='bytes/sec')
-        self.add_field_value('download', rates[1], unit='bytes/sec')
-        self.add_field_value('recv', status.bytes_received, unit='bytes')
-        self.add_field_value('sent', status.bytes_sent, unit='bytes')
+        self.add_field_value('upload', rates[0], unit='bytes/sec', device=internet_device)
+        self.add_field_value('download', rates[1], unit='bytes/sec', device=internet_device)
+        self.add_field_value('recv', status.bytes_received, unit='bytes', device=internet_device)
+        self.add_field_value('sent', status.bytes_sent, unit='bytes', device=internet_device)
         self.add_field_value('uptime', status.uptime, unit='seconds')
 
         from fritzconnection.lib.fritzwlan import FritzWLAN
