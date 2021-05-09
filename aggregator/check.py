@@ -214,15 +214,13 @@ class CheckFritzBox(Check):
         self.report_wifi(FritzWLAN(fc=self.connection, service=3), "wifi 'guest'")
 
 
-RE_TIME = r'time=([0-9]+\.[0-9]+)'
-
-
 class CheckPing(Check):
     """Try to ping a host using both IPv4 and IPv6"""
     CONFIG = merge_dict(Check.CONFIG, {
         'timeout': f'seconds: Maximum time to wait for the host to respond to the ping. Default {CHECK_TIMEOUT_S}',
         'ip': 'str: IP address to ping instead of resolving the configured host'
     })
+    RE_TIME = r'time=([0-9]+\.[0-9]+)'
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -234,7 +232,7 @@ class CheckPing(Check):
         try:
             out = subprocess.check_output([command, '-c', '1', self.address], stderr=subprocess.STDOUT,
                                           encoding='utf-8', timeout=self.timeout)
-            time = float(re.search(RE_TIME, out)[1])
+            time = float(re.search(CheckPing.RE_TIME, out)[1])
             self.add_field_value(field='duration', value=time, unit='ms', device=check)
         except subprocess.CalledProcessError:
             self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
