@@ -1,23 +1,36 @@
 import argparse
 import logging
 import json
+import os
 import sys
 import datetime
+import re
+from dotenv import load_dotenv
 
 from .executor import Executor
 from .check import Check, CHECKS, merge_dict, CheckAge
 from .output import Output, OUTPUTS
-from .notification import MailNotification
+from .notification import MailNotification, NullNotification
+
+
+def handle_env(line: str):
+    for match in re.findall(r'env:([A-Z0-9_]+)', line):
+        variable = os.getenv(match)
+        if variable:
+            line = line.replace(f'env:{match}', variable)
+    return line
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description='Lightweight system monitoring daemon')
     parser.add_argument('-v', '--verbose', help='Enable verbose logging', action='store_true', default=False)
     parser.add_argument('-c', '--config', help='JSON config file to load', required=False)
     parser.add_argument('-m', '--message', help='JSON string used to send a message with the given "contents" and '
                                                 '"subject" using the configured notification channel',
                         required=False, default=None)
-    parser.add_argument('--touch', help='Updates the timestamp stored at the given path, compatible to the "age" check', required=False, default=None)
+    parser.add_argument('--touch', help='Updates the timestamp stored at the given path, compatible to the "age" check',
+                        required=False, default=None)
     parser.add_argument('--dump', help='Dump reference documentation with explanations for all entries to stdout',
                         action='store_true')
     args = parser.parse_args()
@@ -49,6 +62,7 @@ def main():
     with open(args.config, 'r') as configfile:
         lines = configfile.readlines()
         lines = [line if not line.lstrip().startswith('#') else '\n' for line in lines]
+        lines = [handle_env(line) for line in lines]
         config = json.loads(''.join(lines))
 
     if not isinstance(config, dict):
@@ -56,7 +70,9 @@ def main():
         sys.exit(1)
 
     if 'notification' in config:
-        notification = MailNotification(config['notification'])
+        notifier = MailNotification(config['notification'])
+    else:
+        notifier = NullNotification()
 
     if args.message:
         try:
@@ -66,7 +82,7 @@ def main():
         except json.JSONDecodeError:
             subject = args.message
             contents = args.message
-        notification.send_message(subject, contents)
+        notifier.send_message(subject, contents)
         sys.exit(0)
 
     engine = Executor(interval=datetime.timedelta(seconds=config.get('interval', 30)))

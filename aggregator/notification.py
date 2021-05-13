@@ -1,7 +1,15 @@
 from smtplib import SMTP, SMTP_SSL
+import abc
 
 
-class MailNotification:
+class Notification:
+
+    @abc.abstractmethod
+    def send_message(self, subject, contents):
+        pass
+
+
+class MailNotification(Notification):
 
     def __init__(self, config):
         self.server = config['server']
@@ -38,3 +46,9 @@ From: "{self.from_sender}" <{self.from_address}>
             conn.sendmail(self.from_address, self.recipient, msg)
         finally:
             conn.close()
+
+
+class NullNotification(Notification):
+
+    def send_message(self, subject, contents):
+        pass

@@ -9,3 +9,4 @@ docker
 paramiko
 netifaces
 kostalplenticore
+python-dotenv
