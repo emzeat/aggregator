@@ -31,6 +31,8 @@ class Executor:
                 results += c.run()
             except Exception as e:
                 c.logger.fatal(f'Run failure: {e}')
+                if c.logger.isEnabledFor(logging.DEBUG):
+                    raise
         for o in self.outputs:
             o.write(results)
 

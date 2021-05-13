@@ -8,3 +8,4 @@ nut2
 docker
 paramiko
 netifaces
+kostalplenticore

@@ -967,8 +967,7 @@ class CheckAge(Check):
 
 
 class CheckSystem(Check):
-    """Data on the system like uptime and active users
-    """
+    """Data on the system like uptime and active users"""
 
     def __init__(self, config: dict):
         """Constructor"""
@@ -979,6 +978,101 @@ class CheckSystem(Check):
         now = datetime.datetime.now()
         self.add_field_value('uptime', (now - boot_time).total_seconds(), 'seconds')
         self.add_field_value('active_users', len(psutil.users()))
+
+
+class CheckKostalSCB(Check):
+    """Fetches load data for the Kostal SCB Plenticore Plus Hybrid Solar controller"""
+
+    DEVICES_LOCAL = {
+        "HomePv_P": {
+            'unit': 'W',
+            'device': 'Bezug Haus PV'
+        },
+        "HomeBat_P": {
+            'unit': 'W',
+            'device': 'Bezug Haus Batterie'
+        },
+        "HomeGrid_P": {
+            'unit': 'W',
+            'device': 'Bezug Haus Netz'
+        },
+        "Grid_P": {
+            'unit': 'W',
+            'device': 'Energiefluss Netz'
+        },
+        "Dc_P": {
+            'unit': 'W',
+            'device': 'Energiefluss PV'
+        },
+    }
+
+    STATISTICS = {
+        "Statistic:CO2Saving:Total": {
+            'unit': 'g',
+            'device': 'co2 savings'
+        },
+        "Statistic:EnergyHome:Total": {
+            'unit': 'kWh',
+            'device': 'Verbrauch Haus Gesamt'
+        },
+        "Statistic:EnergyHomePv:Total": {
+            'unit': 'kWh',
+            'device': 'Verbrauch Haus PV'
+        },
+        "Statistic:EnergyHomeGrid:Total": {
+            'unit': 'kWh',
+            'device': 'Verbrauch Haus Netz'
+        },
+        "Statistic:EnergyHomeBat:Total": {
+            'unit': 'kWh',
+            'device': 'Verbrauch Haus Batterie'
+        },
+        "Statistic:Autarky:Total": {
+            'unit': '%',
+            'device': 'Autarkiegrad'
+        },
+    }
+    BATTERY = {
+        "SoC": {
+            'unit': '%',
+            'device': 'Ladezustand'
+        },
+        "Cycles": {
+            'unit': None,
+            'device': 'Ladezyklen'
+        },
+        "P": {
+            'unit': 'W',
+            'device': 'Energiefluss Batterie'
+        },
+    }
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='system', config=config)
+        import kostalplenticore
+        self.plenticore_connect = kostalplenticore.connect
+        self.ip = config['ip']
+        self.password = config['password']
+        self.connection = kostalplenticore.connect(self.ip, self.password)
+
+    def fetch_processdata(self, field, moduleid, description):
+        devices = self.connection.getProcessdata(moduleid, list(description.keys()))
+        for d in devices:
+            d_id = d['id']
+            desc = description.get(d_id, None)
+            if desc:
+                self.add_field_value(desc['device'], d['value'], unit=desc['unit'], device=field)
+
+    def on_run(self):
+        try:
+            self.connection.getInfo()
+        except Exception:
+            self.connection.login()
+
+        self.fetch_processdata("load", "devices:local", CheckKostalSCB.DEVICES_LOCAL)
+        self.fetch_processdata("statistics", "scb:statistic:EnergyFlow", CheckKostalSCB.STATISTICS)
+        self.fetch_processdata("battery", "devices:local:battery", CheckKostalSCB.BATTERY)
 
 
 CHECKS = {
@@ -998,5 +1092,6 @@ CHECKS = {
     'docker': CheckDockerV2,
     'spindown': CheckDiskSpindown,
     'age': CheckAge,
-    'system': CheckSystem
+    'system': CheckSystem,
+    'kostal': CheckKostalSCB
 }
