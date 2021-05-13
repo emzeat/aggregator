@@ -10,3 +10,4 @@ paramiko
 netifaces
 kostalplenticore
 python-dotenv
+flask

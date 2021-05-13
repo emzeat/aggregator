@@ -5,6 +5,7 @@ import time
 from .check import Check
 from .output import Output
 
+
 class Executor:
     """Collection of checks"""
 
@@ -43,7 +44,7 @@ class Executor:
             self.cycle()
             end = datetime.datetime.now()
             remaining = self.interval - (end - begin)
-            remaining_s = remaining.seconds + remaining.microseconds / (1000.0*1000.0)
+            remaining_s = remaining.seconds + remaining.microseconds / (1000.0 * 1000.0)
             self.logger.info(f"{remaining} until next iteration")
             if remaining_s > 0:
                 time.sleep(remaining_s)

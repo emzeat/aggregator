@@ -1075,6 +1075,23 @@ class CheckKostalSCB(Check):
         self.fetch_processdata("battery", "devices:local:battery", CheckKostalSCB.BATTERY)
 
 
+class CheckRemote(Check):
+    """Delegate checks to a remote API server"""
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='remote', config=config)
+        self.checks = config['checks']
+
+    def on_run(self):
+        results = requests.post(self.host, json=self.checks, verify=False)
+        if 200 == results.status_code:
+            self.results += results.json().get('results', [])
+        else:
+            self.logger.error(f'Remote execution failed: {results.json()}')
+            raise RuntimeError(results.status_code)
+
+
 CHECKS = {
     'dns': CheckPihole,
     'fritzbox': CheckFritzBox,
@@ -1093,5 +1110,6 @@ CHECKS = {
     'spindown': CheckDiskSpindown,
     'age': CheckAge,
     'system': CheckSystem,
-    'kostal': CheckKostalSCB
+    'kostal': CheckKostalSCB,
+    'remote': CheckRemote
 }

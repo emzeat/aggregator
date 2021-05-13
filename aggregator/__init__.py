@@ -11,6 +11,7 @@ from .executor import Executor
 from .check import Check, CHECKS, merge_dict, CheckAge
 from .output import Output, OUTPUTS
 from .notification import MailNotification, NullNotification
+from .server import Server
 
 
 def handle_env(line: str):
@@ -28,6 +29,8 @@ def main():
     parser.add_argument('-c', '--config', help='JSON config file to load', required=False)
     parser.add_argument('-m', '--message', help='JSON string used to send a message with the given "contents" and '
                                                 '"subject" using the configured notification channel',
+                        required=False, default=None)
+    parser.add_argument('--server', help='Runs a REST API server listening on interface and port',
                         required=False, default=None)
     parser.add_argument('--touch', help='Updates the timestamp stored at the given path, compatible to the "age" check',
                         required=False, default=None)
@@ -53,6 +56,12 @@ def main():
 
     if args.touch:
         CheckAge.touch(args.touch)
+        sys.exit(0)
+
+    if args.server:
+        interface, port = args.server.split(':')
+        api_server = Server(interface, port, CHECKS)
+        api_server.run()
         sys.exit(0)
 
     if not args.config:
