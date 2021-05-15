@@ -236,7 +236,9 @@ class CheckPing(Check):
     """Try to ping a host using both IPv4 and IPv6"""
     CONFIG = merge_dict(Check.CONFIG, {
         'timeout': f'seconds: Maximum time to wait for the host to respond to the ping. Default {CHECK_TIMEOUT_S}',
-        'ip': 'str: IP address to ping instead of resolving the configured host'
+        'ip': 'str: IP address to ping instead of resolving the configured host',
+        'ipv4': 'bool: Checks ping using ipv4, Default: True',
+        'ipv6': 'bool: Checks ping using ipv6, Default: True',
     })
     RE_TIME = r'time=([0-9]+\.[0-9]+)'
 
@@ -245,10 +247,12 @@ class CheckPing(Check):
         super().__init__(name='ping', config=config)
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
         self.address = config.get('ip', config['host'])
+        self.ipv4 = config.get('ipv4', True)
+        self.ipv6 = config.get('ipv6', True)
 
-    def ping(self, command='ping', check='ping'):
+    def ping(self, command, check):
         try:
-            out = subprocess.check_output([command, '-c', '1', self.address], stderr=subprocess.STDOUT,
+            out = subprocess.check_output(command + ['-c', '1', self.address], stderr=subprocess.STDOUT,
                                           encoding='utf-8', timeout=self.timeout)
             time = float(re.search(CheckPing.RE_TIME, out)[1])
             self.add_field_value(field='duration', value=time, unit='ms', device=check)
@@ -261,8 +265,10 @@ class CheckPing(Check):
             self.set_fail(device=check)
 
     def on_run(self):
-        self.ping(command='ping', check='ipv4')
-        self.ping(command='ping6', check='ipv6')
+        if self.ipv4:
+            self.ping(command=['ping', '-4'], check='ipv4')
+        if self.ipv6:
+            self.ping(command=['ping', '-6'], check='ipv6')
 
 
 class CheckDns(Check):
