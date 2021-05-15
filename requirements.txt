@@ -11,3 +11,4 @@ netifaces
 kostalplenticore
 python-dotenv
 flask
+jinja2

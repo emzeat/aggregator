@@ -116,5 +116,6 @@ def main():
         if output_type in OUTPUTS:
             engine.add_output(OUTPUTS[output_type](o))
 
+    engine.add_output(notifier)
     engine.run()
     sys.exit(0)

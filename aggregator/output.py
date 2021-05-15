@@ -12,7 +12,7 @@ class Output:
     CONFIG = {}
 
     @abc.abstractmethod
-    def write(self, results: dict):
+    def write(self, results: list):
         pass
 
 
@@ -22,7 +22,7 @@ class OutputStdout(Output):
     def __init__(self, config):
         pass
 
-    def write(self, results: dict):
+    def write(self, results: list):
         for r in results:
             entry = r
             entry[Check.Result.TIME] = str(r[Check.Result.TIME])

@@ -64,6 +64,7 @@ class Check:
         NAME = 'name'  # the name of the implemented check
         TIME = 'time'  # the UTC time at which check was run
         FIELDS = 'fields'  # the list of measured values
+        STATUS = 'status' # the recorded check status
 
     class Field:
         """Keys in a field dictionary"""
@@ -77,6 +78,7 @@ class Check:
 
     def _reset(self):
         self.results = []
+        self.status = {}
         self.field_values = defaultdict(list)
 
     def __init__(self, name: str, config: dict, default_interval: int = None):
@@ -97,6 +99,7 @@ class Check:
         self.interval = config.get('interval', default_interval)
         self.host = config['host']
         self.last_state = {}
+        self.status = {}
         self._reset()
 
     @abc.abstractmethod
@@ -127,6 +130,15 @@ class Check:
             r[Check.Field.UNIT] = unit
         self.field_values[device].append(r)
 
+    def set_pass(self, device: str = DEFAULT_DEVICE):
+        """Marks the check for device as passed"""
+        if not device in self.status:
+            self.status[device] = True
+
+    def set_fail(self, device: str = DEFAULT_DEVICE):
+        """Marks the check for device as failed"""
+        self.status[device] = False
+
     def run(self):
         """Executes the checks implemented by this class"""
         self._reset()
@@ -156,6 +168,10 @@ class Check:
             })
             if device != Check.DEFAULT_DEVICE:
                 self.results[-1][Check.Result.DEVICE] = device
+                if device in self.status:
+                    self.results[-1][Check.Result.STATUS] = self.status[device]
+                elif Check.DEFAULT_DEVICE in self.status:
+                    self.results[-1][Check.Result.STATUS] = self.status[Check.DEFAULT_DEVICE]
         return self.results
 
 
@@ -197,7 +213,9 @@ class CheckFritzBox(Check):
         from fritzconnection.lib.fritzstatus import FritzStatus
         status = FritzStatus(fc=self.connection)
         internet_device = 'wan'
-        self.add_field_value('online', status.is_connected, device=internet_device)
+        online = status.is_connected
+        self.set_pass(device=internet_device) if online else self.set_fail(device=internet_device)
+        self.add_field_value('online', online, device=internet_device)
         links = status.max_linked_bit_rate
         self.add_field_value('link_upload', links[0], unit='bits/sec', device=internet_device)
         self.add_field_value('link_download', links[1], unit='bits/sec', device=internet_device)
@@ -234,10 +252,13 @@ class CheckPing(Check):
                                           encoding='utf-8', timeout=self.timeout)
             time = float(re.search(CheckPing.RE_TIME, out)[1])
             self.add_field_value(field='duration', value=time, unit='ms', device=check)
+            self.set_pass(device=check)
         except subprocess.CalledProcessError:
             self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
+            self.set_fail(device=check)
         except subprocess.TimeoutExpired:
             self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
+            self.set_fail(device=check)
 
     def on_run(self):
         self.ping(command='ping', check='ipv4')
@@ -271,14 +292,19 @@ class CheckDns(Check):
             self.logger.debug(f"Response is {answers}")
             if answers:
                 self.add_field_value("duration", (end - start).total_seconds() * 1000.0, "ms", device=device)
+                self.set_pass(device=device)
             else:
                 self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+                self.set_fail(device=device)
         except dns.rdatatype.UnknownRdatatype:
             self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.set_fail(device=device)
         except dns.resolver.NoNameservers:
             self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.set_fail(device=device)
         except dns.exception.Timeout:
             self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.set_fail(device=device)
 
     def on_run(self):
         self.measure_record_type('A')
@@ -357,6 +383,7 @@ class CheckHttp(Check):
         except requests.exceptions.ConnectionError as e:
             socket.getaddrinfo = orig_getaddrinfo
             self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+            self.set_fail(device=device)
             self.logger.debug(f"Request failed: {e}")
             return
         end = datetime.datetime.now()
@@ -366,11 +393,14 @@ class CheckHttp(Check):
         if self.expect_status == r.status_code:
             if self.match and self.match not in r.text:
                 self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+                self.set_fail(device=device)
                 return
             self.add_field_value('duration', duration, 'ms', device=device)
+            self.set_pass(device=device)
         else:
             self.logger.warning(f"Expected {self.expect_status} but got {r.status_code}")
             self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+            self.set_fail(device=device)
 
 
 class CheckCpu(Check):
@@ -742,12 +772,16 @@ class CheckUPS(Check):
         status = ups_vars['ups.status']
         if 'OL' == status:
             status = 'online'
+            self.set_pass()
         elif 'OL CHRG' == status:
             status = 'charging'
+            self.set_pass()
         elif 'OB' == status:
             status = 'battery'
+            self.set_fail()
         elif 'LB' == status:
             status = 'low battery'
+            self.set_fail()
         self.add_field_value('status', status)
 
 
@@ -940,7 +974,9 @@ class CheckAge(Check):
     """
     CONFIG = merge_dict(Check.CONFIG, {
         'path': 'str: Path to a file containing a string which can be parsed by datetime.strptime',
-        'format': 'str: Format to use for parsing the datestring in file. Defaults to the format used by CheckAge.touch'
+        'format': 'str: Format to use for parsing the datestring in file. '
+                  'Defaults to the format used by CheckAge.touch',
+        'max_age': 'float: Maximum age in days after which to report a stamp as failure. Defaults to None.'
     })
     DEFAULT_FORMAT = '%H:%M:%S %d.%m.%Y'
 
@@ -949,6 +985,7 @@ class CheckAge(Check):
         super().__init__(name='age', config=config)
         self.file = pathlib.Path(config['path'])
         self.formatstr = config.get('format', CheckAge.DEFAULT_FORMAT)
+        self.max_age = config.get('max_age', None)
 
     @staticmethod
     def touch(file, formatstr=DEFAULT_FORMAT):
@@ -961,23 +998,38 @@ class CheckAge(Check):
         if self.file.exists():
             time = datetime.datetime.strptime(self.file.read_text().strip(), self.formatstr)
             now = datetime.datetime.now()
-            self.add_field_value('age', (now - time).total_seconds(), 'seconds', device=self.file.name)
+            age_days = float((now - time).days)
+            self.add_field_value('age', age_days, 'days', device=self.file.name)
+            if self.max_age and age_days > self.max_age:
+                self.set_fail(device=self.file.name)
+            else:
+                self.set_pass(device=self.file.name)
         else:
-            self.add_field_value('age', CHECK_ERROR_S, 'seconds', device=self.file.name)
+            self.add_field_value('age', CHECK_ERROR_S, 'days', device=self.file.name)
+            self.set_fail(device=self.file.name)
 
 
 class CheckSystem(Check):
     """Data on the system like uptime and active users"""
+    CONFIG = merge_dict(Check.CONFIG, {
+        'max_users': 'int: Maximum number of active users beyond which to report a failure. Defaults to None.'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
         super().__init__(name='system', config=config)
+        self.max_users = config.get('max_users', None)
 
     def on_run(self):
         boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
         now = datetime.datetime.now()
         self.add_field_value('uptime', (now - boot_time).total_seconds(), 'seconds')
-        self.add_field_value('active_users', len(psutil.users()))
+        active_users = len(psutil.users())
+        self.add_field_value('active_users', active_users)
+        if self.max_users and active_users > self.max_users:
+            self.set_fail()
+        else:
+            self.set_pass()
 
 
 class CheckKostalSCB(Check):
