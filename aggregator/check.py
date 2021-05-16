@@ -1145,6 +1145,13 @@ class CheckRemote(Check):
         results = requests.post(self.host, json=self.checks, verify=False)
         if 200 == results.status_code:
             self.results += results.json().get('results', [])
+            for result in self.results:
+                time = result[Check.Result.TIME]
+                if not isinstance(time, datetime.datetime):
+                    # convert from an HTTP date
+                    time = datetime.datetime.strptime(time, "%a, %d %b %Y %H:%M:%S %Z")
+                result[Check.Result.TIME] = time
+            pass
         else:
             self.logger.error(f'Remote execution failed: {results.json()}')
             raise RuntimeError(results.status_code)
