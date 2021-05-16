@@ -35,7 +35,12 @@ class Executor:
                 if c.logger.isEnabledFor(logging.DEBUG):
                     raise
         for o in self.outputs:
-            o.write(results)
+            try:
+                o.write(results)
+            except Exception as e:
+                c.logger.fatal(f'Output failure: {e}')
+                if c.logger.isEnabledFor(logging.DEBUG):
+                    raise
 
     def run(self):
         self.logger.info(f"Will run checks every {self.interval}")
