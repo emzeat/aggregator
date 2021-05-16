@@ -10,9 +10,8 @@ from .check import Check
 class Notification(Output):
 
     TEMPLATE = """
-        <h2>Aggregator</h2>
-        {{ failed | length }} Failures<br/>
-        {{ passed | length }} Passes
+        <b style="color:red;">{{ failed | length }}</b> Failures<br/>
+        <b style="color:green;">{{ passed | length }}</b> Passes
     {%- for check in checked %}
         <hr style="border: 1px solid black;" />
         {%- if check[keys.STATUS] %}
