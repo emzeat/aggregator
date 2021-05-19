@@ -64,7 +64,7 @@ class Check:
         NAME = 'name'  # the name of the implemented check
         TIME = 'time'  # the UTC time at which check was run
         FIELDS = 'fields'  # the list of measured values
-        STATUS = 'status' # the recorded check status
+        STATUS = 'status'  # the recorded check status
 
     class Field:
         """Keys in a field dictionary"""
@@ -75,10 +75,11 @@ class Check:
         MAX = 'max'  # the value above which the measurement failed
 
     DEFAULT_DEVICE = ''
+    STATUS_FAILED = 2
+    STATUS_OK = 0
 
     def _reset(self):
         self.results = []
-        self.status = {}
         self.field_values = defaultdict(list)
 
     def __init__(self, name: str, config: dict, default_interval: int = None):
@@ -132,12 +133,13 @@ class Check:
 
     def set_pass(self, device: str = DEFAULT_DEVICE):
         """Marks the check for device as passed"""
-        if not device in self.status:
-            self.status[device] = True
+        status = self.status.get(device, Check.STATUS_OK)
+        self.status[device] = max(Check.STATUS_OK, status - 1)
 
     def set_fail(self, device: str = DEFAULT_DEVICE):
         """Marks the check for device as failed"""
-        self.status[device] = False
+        status = self.status.get(device, Check.STATUS_OK)
+        self.status[device] = min(Check.STATUS_FAILED, status + 1)
 
     def run(self):
         """Executes the checks implemented by this class"""
@@ -168,10 +170,14 @@ class Check:
             })
             if device != Check.DEFAULT_DEVICE:
                 self.results[-1][Check.Result.DEVICE] = device
-                if device in self.status:
-                    self.results[-1][Check.Result.STATUS] = self.status[device]
-                elif Check.DEFAULT_DEVICE in self.status:
-                    self.results[-1][Check.Result.STATUS] = self.status[Check.DEFAULT_DEVICE]
+            status = self.status.get(device, None)
+            if status is None:
+                status = self.status.get(Check.DEFAULT_DEVICE, None)
+            if status is not None:
+                if Check.STATUS_OK == status:
+                    self.results[-1][Check.Result.STATUS] = True
+                elif Check.STATUS_FAILED == status:
+                    self.results[-1][Check.Result.STATUS] = False
         return self.results
 
 
