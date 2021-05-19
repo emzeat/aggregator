@@ -897,6 +897,7 @@ class CheckDockerV2(Check):
         import docker
         self.docker_client = docker.DockerClient
         self.docker_from_env = docker.from_env
+        self._stale_container_list = True
         self._fetch_containers()
         self.cpu_count = psutil.cpu_count()
 
@@ -914,6 +915,7 @@ class CheckDockerV2(Check):
                 self.id = api_container.id
 
         self.containers = [Container(c) for c in client.containers.list(sparse=False)]
+        self._stale_container_list = False
 
     def read_sysfs_node(self, path, key_index=0):
         """Returns a dict with values of the sysfs node at path"""
@@ -927,6 +929,7 @@ class CheckDockerV2(Check):
             return values
         except IOError:
             self.logger.warning(f"Failed to read {path}")
+            self._stale_container_list = True
             return None
 
     def read_net_dev_node(self, pid):
@@ -941,9 +944,12 @@ class CheckDockerV2(Check):
             # self.logger.debug(f"/proc/{pid}/net/dev yields {values}")
             return values
         self.logger.warning(f"Failed to read /proc/{pid}/net/dev")
+        self._stale_container_list = True
         return None
 
     def on_run(self):
+        if self._stale_container_list:
+            self._fetch_containers()
         for container in self.containers:
             name = f"container '{container.name}'"
             # see https://crate.io/a/analyzing-docker-container-performance-native-tools/
