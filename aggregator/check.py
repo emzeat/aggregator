@@ -713,6 +713,8 @@ class CheckNetgearGS108Ev2(Check):
         queries = [ProSafeLinux.CMD_MODEL, ProSafeLinux.CMD_NAME,
                    ProSafeLinux.CMD_PORT_STAT, ProSafeLinux.CMD_SPEED_STAT]
         response = switch.query(queries, self.switch_mac)
+        if not response:
+            return  # not reachable
         response = {r.get_name(): v for r, v in response.items()}
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Status for:"
