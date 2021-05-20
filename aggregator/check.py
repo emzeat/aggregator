@@ -1126,7 +1126,7 @@ class CheckKostalSCB(Check):
         self.plenticore_connect = kostalplenticore.connect
         self.ip = config['ip']
         self.password = config['password']
-        self.connection = kostalplenticore.connect(self.ip, self.password)
+        self.connection = self.plenticore_connect(self.ip, self.password)
 
     def fetch_processdata(self, field, moduleid, description):
         devices = self.connection.getProcessdata(moduleid, list(description.keys()))
@@ -1138,13 +1138,14 @@ class CheckKostalSCB(Check):
 
     def on_run(self):
         try:
-            self.connection.getInfo()
+            self.fetch_processdata("load", "devices:local", CheckKostalSCB.DEVICES_LOCAL)
+            self.fetch_processdata("statistics", "scb:statistic:EnergyFlow", CheckKostalSCB.STATISTICS)
+            self.fetch_processdata("battery", "devices:local:battery", CheckKostalSCB.BATTERY)
         except Exception:
+            self.connection = self.plenticore_connect(self.ip, self.password)
             self.connection.login()
+            raise
 
-        self.fetch_processdata("load", "devices:local", CheckKostalSCB.DEVICES_LOCAL)
-        self.fetch_processdata("statistics", "scb:statistic:EnergyFlow", CheckKostalSCB.STATISTICS)
-        self.fetch_processdata("battery", "devices:local:battery", CheckKostalSCB.BATTERY)
 
 
 class CheckRemote(Check):
