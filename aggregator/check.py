@@ -391,13 +391,14 @@ class CheckHttp(Check):
             if self.cname:
                 socket.getaddrinfo = force_address_getaddrinfo
             r = requests.get(host, timeout=self.timeout, verify=self.verify_tls)
-            socket.getaddrinfo = orig_getaddrinfo
-        except requests.exceptions.ConnectionError as e:
-            socket.getaddrinfo = orig_getaddrinfo
+        except Exception as e:
             self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
             self.set_fail(device=device)
             self.logger.debug(f"Request failed: {e}")
+            socket.getaddrinfo = orig_getaddrinfo
             return
+        finally:
+            socket.getaddrinfo = orig_getaddrinfo
         end = datetime.datetime.now()
         duration = (end - start).total_seconds() * 1000.0
         self.add_field_value('status_code', r.status_code, device=device)
@@ -1145,7 +1146,6 @@ class CheckKostalSCB(Check):
             self.connection = self.plenticore_connect(self.ip, self.password)
             self.connection.login()
             raise
-
 
 
 class CheckRemote(Check):
