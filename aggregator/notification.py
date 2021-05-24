@@ -52,6 +52,8 @@ class Notification(Output):
         self.checked = {}
         self.failed = {}
         self.passed = {}
+        self.last_len_failed = -1
+        self.last_len_passed = -1
 
     @abc.abstractmethod
     def send_message(self, subject, contents):
@@ -89,9 +91,14 @@ class Notification(Output):
                 time_to_next_message = Notification.MESSAGE_INTERVAL - (now - self.last_failure_message)
             else:
                 time_to_next_message = datetime.timedelta(seconds=-1)
-            if time_to_next_message.total_seconds() < 0:
+            # send a message on a change of passes, failures or when MESSAGE_INTERVAL has passed
+            if time_to_next_message.total_seconds() < 0 \
+                    or self.last_len_failed != len(failed) \
+                    or self.last_len_passed != len(passed):
                 self.send_message('Aggregator found failure', template.render(locals()))
                 self.last_failure_message = now
+                self.last_len_failed = len(failed)
+                self.last_len_passed = len(passed)
                 self.logger.warning("Found failure, sent notification")
             else:
                 self.logger.warning(f"Found failure, delaying notification for {time_to_next_message}")
