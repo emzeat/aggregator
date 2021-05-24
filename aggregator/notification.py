@@ -21,7 +21,11 @@ class Notification(Output):
         {%- endif %}
             {{ check[keys.NAME] | upper }} {{ check.get(keys.DEVICE, '') }}
         </h3>
-        <p>Host: {{ check[keys.HOST] }}</p>
+        <p>
+            Host: {{ check[keys.HOST] }}<br/>
+            Last Run: {{ check[keys.TIME] }}
+        </p>
+        
         <table>
         {%- for field in check[keys.FIELDS] %}
             <tr>
@@ -45,18 +49,40 @@ class Notification(Output):
         import logging
         self.logger = logging.getLogger(f"aggregator.notification.{name}")
         self.last_failure_message = None
+        self.checked = {}
+        self.failed = {}
+        self.passed = {}
 
     @abc.abstractmethod
     def send_message(self, subject, contents):
         pass
 
+    @staticmethod
+    def make_key(check):
+        """Creates a key out of the given check entry"""
+        return f"{check[Check.Result.HOST]}/{check[Check.Result.NAME]}/{check.get(Check.Result.DEVICE, 'nodevice')}"
+
     def write(self, results: list):
-        checked = [r for r in results if r.get(Check.Result.STATUS, None) is not None]
-        failed = [r for r in checked if not r.get(Check.Result.STATUS)]
-        passed = [r for r in results if r.get(Check.Result.STATUS)]
-        template = jinja2.Template(Notification.TEMPLATE)
+        for c in [r for r in results if r.get(Check.Result.STATUS, None) is not None]:
+            self.checked[Notification.make_key(c)] = c
+        checked = self.checked.values()
+        for f in [r for r in checked if not r.get(Check.Result.STATUS)]:
+            self.failed[Notification.make_key(f)] = f
+            try:
+                del self.passed[Notification.make_key(f)]
+            except Exception:
+                pass
+        failed = self.failed.values()
+        for p in [r for r in results if r.get(Check.Result.STATUS)]:
+            self.passed[Notification.make_key(p)] = p
+            try:
+                del self.failed[Notification.make_key(p)]
+            except Exception:
+                pass
+        passed = self.passed.values()
         keys = Check.Result
         fields = Check.Field
+        template = jinja2.Template(Notification.TEMPLATE)
         if 0 == len(passed) or 0 != len(failed):
             now = datetime.datetime.now()
             if self.last_failure_message:
