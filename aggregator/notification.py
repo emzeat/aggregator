@@ -10,9 +10,17 @@ from .check import Check
 class Notification(Output):
 
     TEMPLATE = """
-        <b style="color:red;">{{ failed | length }}</b> Failures<br/>
-        <b style="color:green;">{{ passed | length }}</b> Passes
-    {%- for check in checked %}
+        <table>
+            <tr>
+                <td><b style="color:red; text-align:right;">{{ failed | length }}</b></td>
+                <td>Failures</td>
+            </tr>
+            <tr>
+                <td><b style="color:green; text-align:right;">{{ passed | length }}</b></td>
+                <td>Passes</td>
+            </tr>
+        </table>
+    {%- macro render_check(check) %}
         <hr style="border: 1px solid black;" />
         {%- if check[keys.STATUS] %}
         <h3 style="color:green;">
@@ -21,20 +29,29 @@ class Notification(Output):
         {%- endif %}
             {{ check[keys.NAME] | upper }} {{ check.get(keys.DEVICE, '') }}
         </h3>
-        <p>
-            Host: {{ check[keys.HOST] }}<br/>
-            Last Run: {{ check[keys.TIME] }}
-        </p>
-        
         <table>
+            <tr>
+                <td style="text-align:right;"><b>host</b></td>
+                <td colspan="2">{{ check[keys.HOST] }}</td>
+            </tr>
+            <tr>
+                <td style="text-align:right;"><b>last run</b></td>
+                <td colspan="2">{{ check[keys.TIME].strftime('%d.%m.%Y %H:%M:%S') }}</td>
+            </tr>
         {%- for field in check[keys.FIELDS] %}
             <tr>
-                <td>{{ field[fields.NAME] }}</td>
+                <td style="text-align:right;"><b>{{ field[fields.NAME] }}</b></td>
                 <td>{{ field[fields.VALUE] }}</td>
                 <td>{{ field[fields.UNIT] }}</td>
             </tr>
         {%- endfor %}
         </table>
+    {%- endmacro %}
+    {%- for check in failed %}
+        {{ render_check(check) }}
+    {%- endfor %}
+    {%- for check in passed %}
+        {{ render_check(check) }}
     {%- endfor %}
     """
     MESSAGE_INTERVAL = datetime.timedelta(minutes=30)
