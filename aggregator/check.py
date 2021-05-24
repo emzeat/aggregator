@@ -6,6 +6,7 @@ import socket
 import subprocess
 import re
 import os
+import platform
 
 import requests
 import dns.rdatatype
@@ -255,6 +256,12 @@ class CheckPing(Check):
         self.address = config.get('ip', config['host'])
         self.ipv4 = config.get('ipv4', True)
         self.ipv6 = config.get('ipv6', True)
+        if 'Darwin' == platform.system():
+            self.ping_ipv4_cmd = ['ping']
+            self.ping_ipv6_cmd = ['ping6']
+        else:
+            self.ping_ipv4_cmd = ['ping', '-4']
+            self.ping_ipv6_cmd = ['ping', '-6']
 
     def ping(self, command, check):
         try:
@@ -272,9 +279,9 @@ class CheckPing(Check):
 
     def on_run(self):
         if self.ipv4:
-            self.ping(command=['ping', '-4'], check='ipv4')
+            self.ping(command=self.ping_ipv4_cmd, check='ipv4')
         if self.ipv6:
-            self.ping(command=['ping', '-6'], check='ipv6')
+            self.ping(command=self.ping_ipv6_cmd, check='ipv6')
 
 
 class CheckDns(Check):
