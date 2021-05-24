@@ -38,8 +38,8 @@ class Executor:
             try:
                 o.write(results)
             except Exception as e:
-                c.logger.fatal(f'Output failure: {e}')
-                if c.logger.isEnabledFor(logging.DEBUG):
+                o.logger.fatal(f'Output failure: {e}')
+                if o.logger.isEnabledFor(logging.DEBUG):
                     raise
 
     def run(self):

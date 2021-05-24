@@ -11,6 +11,15 @@ from .check import Check, merge_dict
 class Output:
     CONFIG = {}
 
+    def __init__(self, name: str, config: dict):
+        """Constructs a new Output instance
+
+        :param name: The name of the output implementation
+        :param config: The output configuration
+        """
+        import logging
+        self.logger = logging.getLogger(f"aggregator.output.{name}")
+
     @abc.abstractmethod
     def write(self, results: list):
         pass
@@ -20,7 +29,7 @@ class OutputStdout(Output):
     """Write check results to stdout"""
 
     def __init__(self, config):
-        pass
+        super(OutputStdout, self).__init__('stdout', config)
 
     def write(self, results: list):
         for r in results:
@@ -39,6 +48,7 @@ class OutputInfluxDb(Output):
     """Send check results to an influxdb instance"""
 
     def __init__(self, config):
+        super(OutputInfluxDb, self).__init__('influxdb', config)
         self.logger = logging.getLogger("aggregator.output.influxdb")
         self.token = config['token']
         self.org = config['org']

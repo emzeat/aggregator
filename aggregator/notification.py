@@ -35,9 +35,15 @@ class Notification(Output):
     """
     MESSAGE_INTERVAL = datetime.timedelta(minutes=30)
 
-    def __init__(self):
+    def __init__(self, name: str, config: dict):
+        """Constructs a new Notification instance
+
+        :param name: The name of the output implementation
+        :param config: The output configuration
+        """
+        super(Notification, self).__init__(name, config)
         import logging
-        self.logger = logging.getLogger(f"aggregator.notification")
+        self.logger = logging.getLogger(f"aggregator.notification.{name}")
         self.last_failure_message = None
 
     @abc.abstractmethod
@@ -73,7 +79,7 @@ class Notification(Output):
 class MailNotification(Notification):
 
     def __init__(self, config):
-        super().__init__()
+        super().__init__('mail', config)
         self.server = config['server']
         self.port = config.get('port', 0)
         self.recipient = config['recipient']
@@ -111,6 +117,9 @@ From: "{self.from_sender}" <{self.from_address}>
 
 
 class NullNotification(Notification):
+
+    def __init__(self, config):
+        super().__init__('null', config)
 
     def send_message(self, subject, contents):
         pass
