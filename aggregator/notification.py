@@ -105,23 +105,27 @@ class Notification(Output):
         if 0 == len(passed) or 0 != len(failed):
             now = datetime.datetime.now()
             if self.last_failure_message:
-                time_to_next_message = Notification.MESSAGE_INTERVAL - (now - self.last_failure_message)
+                time_to_next_message = Notification.MESSAGE_INTERVAL - \
+                    (now - self.last_failure_message)
             else:
                 time_to_next_message = datetime.timedelta(seconds=-1)
             # send a message on a change of passes, failures or when MESSAGE_INTERVAL has passed
             if time_to_next_message.total_seconds() < 0 \
                     or self.last_len_failed != len(failed) \
                     or self.last_len_passed != len(passed):
-                self.send_message('Aggregator found failure', template.render(locals()))
+                self.send_message('Aggregator found failure',
+                                  template.render(locals()))
                 self.last_failure_message = now
                 self.last_len_failed = len(failed)
                 self.last_len_passed = len(passed)
                 self.logger.warning("Found failure, sent notification")
             else:
-                self.logger.warning(f"Found failure, delaying notification for {time_to_next_message}")
+                self.logger.warning(
+                    f"Found failure, delaying notification for {time_to_next_message}")
 
         elif self.last_failure_message:
-            self.send_message('Aggregator checks passed', template.render(locals()))
+            self.send_message('Aggregator checks passed',
+                              template.render(locals()))
             self.logger.info("Failure is gone")
             self.last_failure_message = None
 
@@ -137,7 +141,8 @@ class MailNotification(Notification):
         self.password = config.get('password', None)
         self.use_tls = config.get('use_tls', False)
         self.use_ssl = config.get('use_ssl', False)
-        self.from_address = config.get('from_address', 'noreply@aggregator.local')
+        self.from_address = config.get(
+            'from_address', 'noreply@aggregator.local')
         self.from_sender = config.get('from_sender', 'aggregator')
 
     def send_message(self, subject, contents):

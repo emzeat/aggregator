@@ -24,9 +24,12 @@ def handle_env(line: str):
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(description='Lightweight system monitoring daemon')
-    parser.add_argument('-v', '--verbose', help='Enable verbose logging', action='store_true', default=False)
-    parser.add_argument('-c', '--config', help='JSON config file to load', required=False)
+    parser = argparse.ArgumentParser(
+        description='Lightweight system monitoring daemon')
+    parser.add_argument('-v', '--verbose', help='Enable verbose logging',
+                        action='store_true', default=False)
+    parser.add_argument(
+        '-c', '--config', help='JSON config file to load', required=False)
     parser.add_argument('-m', '--message', help='JSON string used to send a message with the given "contents" and '
                                                 '"subject" using the configured notification channel',
                         required=False, default=None)
@@ -70,12 +73,14 @@ def main():
     logging.info(f"Reading configuration from {args.config}")
     with open(args.config, 'r') as configfile:
         lines = configfile.readlines()
-        lines = [line if not line.lstrip().startswith('#') else '\n' for line in lines]
+        lines = [line if not line.lstrip().startswith(
+            '#') else '\n' for line in lines]
         lines = [handle_env(line) for line in lines]
         config = json.loads(''.join(lines))
 
     if not isinstance(config, dict):
-        logging.fatal(f"Malformed config file, expected 'list' but got '{config.__class__}'")
+        logging.fatal(
+            f"Malformed config file, expected 'list' but got '{config.__class__}'")
         sys.exit(1)
 
     if 'notification' in config:
@@ -94,7 +99,8 @@ def main():
         notifier.send_message(subject, contents)
         sys.exit(0)
 
-    engine = Executor(interval=datetime.timedelta(seconds=config.get('interval', 30)))
+    engine = Executor(interval=datetime.timedelta(
+        seconds=config.get('interval', 30)))
     for entry in config.get('checks', []):
         try:
             entry_type = entry['type']
@@ -108,7 +114,8 @@ def main():
                 logging.fatal(f"Unknown check '{entry_type}'")
                 sys.exit(1)
         except KeyError as e:
-            logging.fatal(f"Failed to create check of type '{entry_type}': Missing entry {e}")
+            logging.fatal(
+                f"Failed to create check of type '{entry_type}': Missing entry {e}")
             sys.exit(1)
 
     for o in config.get('outputs', []):

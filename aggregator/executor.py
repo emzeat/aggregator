@@ -50,6 +50,7 @@ class Executor:
             end = datetime.datetime.now()
             remaining = self.interval - (end - begin)
             remaining_s = remaining.total_seconds()
-            self.logger.info(f"{remaining} ({remaining_s}s) until next iteration")
+            self.logger.info(
+                f"{remaining} ({remaining_s}s) until next iteration")
             if remaining_s > 0:
                 time.sleep(remaining_s)

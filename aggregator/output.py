@@ -67,9 +67,11 @@ class OutputInfluxDb(Output):
             if Check.Result.DEVICE in result:
                 point = point.tag("device", result[Check.Result.DEVICE])
             for field in result[Check.Result.FIELDS]:
-                point = point.field(field[Check.Field.NAME], field[Check.Field.VALUE])
+                point = point.field(
+                    field[Check.Field.NAME], field[Check.Field.VALUE])
                 if Check.Field.UNIT in field:
-                    point = point.field(f"{field[Check.Field.NAME]}_unit", field[Check.Field.UNIT])
+                    point = point.field(
+                        f"{field[Check.Field.NAME]}_unit", field[Check.Field.UNIT])
             points.append(point)
         self.write_api.write(self.bucket, self.org, points)
 

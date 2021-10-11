@@ -97,7 +97,8 @@ class Check:
         self.name = name
         self.host = config['host']
         self.logger.info(f"New instance monitoring '{self.host}'")
-        self.logger = logging.getLogger(f"aggregator.check.{name}({self.host})")
+        self.logger = logging.getLogger(
+            f"aggregator.check.{name}({self.host})")
         self.interval = config.get('interval', default_interval)
         self.host = config['host']
         self.last_state = {}
@@ -160,7 +161,8 @@ class Check:
         else:
             self.logger.debug('Run check - no interval configured')
         self.on_run()
-        self.logger.debug(f'Check completed in {(datetime.datetime.utcnow() - now)}')
+        self.logger.debug(
+            f'Check completed in {(datetime.datetime.utcnow() - now)}')
         self.last_state[LAST_RUN] = now
         for device, values in self.field_values.items():
             self.results.append({
@@ -203,17 +205,23 @@ class CheckFritzBox(Check):
     def report_wifi(self, service, band):
         from fritzconnection.core.exceptions import FritzServiceError
         try:
-            status = self.connection.call_action(f'WLANConfiguration{service.service}', 'GetInfo')
-            self.add_field_value('active', True if 'Up' == status['NewStatus'] else False, device=band)
+            status = self.connection.call_action(
+                f'WLANConfiguration{service.service}', 'GetInfo')
+            self.add_field_value('active', True if 'Up' ==
+                                 status['NewStatus'] else False, device=band)
         except FritzServiceError:
             pass
         try:
-            stats = self.connection.call_action(f'WLANConfiguration{service.service}', 'GetPacketStatistics')
-            self.add_field_value('sent', stats['NewTotalPacketsSent'], 'packets', device=band)
-            self.add_field_value('recv', stats['NewTotalPacketsReceived'], 'packets', device=band)
+            stats = self.connection.call_action(
+                f'WLANConfiguration{service.service}', 'GetPacketStatistics')
+            self.add_field_value(
+                'sent', stats['NewTotalPacketsSent'], 'packets', device=band)
+            self.add_field_value(
+                'recv', stats['NewTotalPacketsReceived'], 'packets', device=band)
         except FritzServiceError:
             pass
-        active_clients = len([c for c in service.get_hosts_info() if c['status']])
+        active_clients = len(
+            [c for c in service.get_hosts_info() if c['status']])
         self.add_field_value('clients', active_clients, device=band)
 
     def on_run(self):
@@ -221,22 +229,32 @@ class CheckFritzBox(Check):
         status = FritzStatus(fc=self.connection)
         internet_device = 'wan'
         online = status.is_connected
-        self.set_pass(device=internet_device) if online else self.set_fail(device=internet_device)
+        self.set_pass(device=internet_device) if online else self.set_fail(
+            device=internet_device)
         self.add_field_value('online', online, device=internet_device)
         links = status.max_linked_bit_rate
-        self.add_field_value('link_upload', links[0], unit='bits/sec', device=internet_device)
-        self.add_field_value('link_download', links[1], unit='bits/sec', device=internet_device)
+        self.add_field_value(
+            'link_upload', links[0], unit='bits/sec', device=internet_device)
+        self.add_field_value(
+            'link_download', links[1], unit='bits/sec', device=internet_device)
         rates = status.transmission_rate
-        self.add_field_value('upload', rates[0], unit='bytes/sec', device=internet_device)
-        self.add_field_value('download', rates[1], unit='bytes/sec', device=internet_device)
-        self.add_field_value('recv', status.bytes_received, unit='bytes', device=internet_device)
-        self.add_field_value('sent', status.bytes_sent, unit='bytes', device=internet_device)
+        self.add_field_value(
+            'upload', rates[0], unit='bytes/sec', device=internet_device)
+        self.add_field_value(
+            'download', rates[1], unit='bytes/sec', device=internet_device)
+        self.add_field_value('recv', status.bytes_received,
+                             unit='bytes', device=internet_device)
+        self.add_field_value('sent', status.bytes_sent,
+                             unit='bytes', device=internet_device)
         self.add_field_value('uptime', status.uptime, unit='seconds')
 
         from fritzconnection.lib.fritzwlan import FritzWLAN
-        self.report_wifi(FritzWLAN(fc=self.connection, service=1), "wifi '2.4ghz'")
-        self.report_wifi(FritzWLAN(fc=self.connection, service=2), "wifi '5ghz'")
-        self.report_wifi(FritzWLAN(fc=self.connection, service=3), "wifi 'guest'")
+        self.report_wifi(FritzWLAN(fc=self.connection,
+                         service=1), "wifi '2.4ghz'")
+        self.report_wifi(
+            FritzWLAN(fc=self.connection, service=2), "wifi '5ghz'")
+        self.report_wifi(FritzWLAN(fc=self.connection,
+                         service=3), "wifi 'guest'")
 
 
 class CheckPing(Check):
@@ -268,13 +286,16 @@ class CheckPing(Check):
             out = subprocess.check_output(command + ['-c', '1', self.address], stderr=subprocess.STDOUT,
                                           encoding='utf-8', timeout=self.timeout)
             time = float(re.search(CheckPing.RE_TIME, out)[1])
-            self.add_field_value(field='duration', value=time, unit='ms', device=check)
+            self.add_field_value(
+                field='duration', value=time, unit='ms', device=check)
             self.set_pass(device=check)
         except subprocess.CalledProcessError:
-            self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
+            self.add_field_value(
+                field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
             self.set_fail(device=check)
         except subprocess.TimeoutExpired:
-            self.add_field_value(field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
+            self.add_field_value(
+                field='duration', value=CHECK_ERROR_S, unit='ms', device=check)
             self.set_fail(device=check)
 
     def on_run(self):
@@ -310,19 +331,24 @@ class CheckDns(Check):
             answers = [a.to_text() for a in r.response.answer]
             self.logger.debug(f"Response is {answers}")
             if answers:
-                self.add_field_value("duration", (end - start).total_seconds() * 1000.0, "ms", device=device)
+                self.add_field_value(
+                    "duration", (end - start).total_seconds() * 1000.0, "ms", device=device)
                 self.set_pass(device=device)
             else:
-                self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+                self.add_field_value(
+                    "duration", CHECK_ERROR_S, "ms", device=device)
                 self.set_fail(device=device)
         except dns.rdatatype.UnknownRdatatype:
-            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.add_field_value(
+                "duration", CHECK_ERROR_S, "ms", device=device)
             self.set_fail(device=device)
         except dns.resolver.NoNameservers:
-            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.add_field_value(
+                "duration", CHECK_ERROR_S, "ms", device=device)
             self.set_fail(device=device)
         except dns.exception.Timeout:
-            self.add_field_value("duration", CHECK_ERROR_S, "ms", device=device)
+            self.add_field_value(
+                "duration", CHECK_ERROR_S, "ms", device=device)
             self.set_fail(device=device)
 
     def on_run(self):
@@ -350,10 +376,14 @@ class CheckPihole(CheckDns):
                 def status_value(name):
                     return int(status.get(name, "0").replace(',', ''))
 
-                self.add_field_value('domains_being_blocked', status_value('domains_being_blocked'))
-                self.add_field_value('dns_queries_today', status_value('dns_queries_today'))
-                self.add_field_value('queries_forwarded', status_value('queries_forwarded'))
-                self.add_field_value('ads_blocked_today', status_value('ads_blocked_today'))
+                self.add_field_value(
+                    'domains_being_blocked', status_value('domains_being_blocked'))
+                self.add_field_value('dns_queries_today',
+                                     status_value('dns_queries_today'))
+                self.add_field_value('queries_forwarded',
+                                     status_value('queries_forwarded'))
+                self.add_field_value('ads_blocked_today',
+                                     status_value('ads_blocked_today'))
 
 
 class CheckHttp(Check):
@@ -388,7 +418,8 @@ class CheckHttp(Check):
 
         def force_address_getaddrinfo(original_host, original_port, original_family=0,
                                       original_type=0, original_proto=0, original_flags=0):
-            self.logger.debug(f"Forcing connection to {original_host} via {self.cname}")
+            self.logger.debug(
+                f"Forcing connection to {original_host} via {self.cname}")
             ret = orig_getaddrinfo(self.cname, original_port, original_family,
                                    original_type, original_proto, original_flags)
             self.logger.debug(f"{self.cname} resolves to {ret}")
@@ -397,9 +428,11 @@ class CheckHttp(Check):
         try:
             if self.cname:
                 socket.getaddrinfo = force_address_getaddrinfo
-            r = requests.get(host, timeout=self.timeout, verify=self.verify_tls)
+            r = requests.get(host, timeout=self.timeout,
+                             verify=self.verify_tls)
         except Exception as e:
-            self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+            self.add_field_value(
+                'duration', CHECK_ERROR_S, 'ms', device=device)
             self.set_fail(device=device)
             self.logger.debug(f"Request failed: {e}")
             socket.getaddrinfo = orig_getaddrinfo
@@ -412,14 +445,17 @@ class CheckHttp(Check):
         self.logger.debug(f"Request completed: {r.status_code}")
         if self.expect_status == r.status_code:
             if self.match and self.match not in r.text:
-                self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+                self.add_field_value(
+                    'duration', CHECK_ERROR_S, 'ms', device=device)
                 self.set_fail(device=device)
                 return
             self.add_field_value('duration', duration, 'ms', device=device)
             self.set_pass(device=device)
         else:
-            self.logger.warning(f"Expected {self.expect_status} but got {r.status_code}")
-            self.add_field_value('duration', CHECK_ERROR_S, 'ms', device=device)
+            self.logger.warning(
+                f"Expected {self.expect_status} but got {r.status_code}")
+            self.add_field_value(
+                'duration', CHECK_ERROR_S, 'ms', device=device)
             self.set_fail(device=device)
 
 
@@ -440,7 +476,8 @@ class CheckCpu(Check):
         except AttributeError:
             pass
         try:
-            self.add_field_value('irq', (times.irq + times.softirq) / cpu_count, 'seconds')
+            self.add_field_value(
+                'irq', (times.irq + times.softirq) / cpu_count, 'seconds')
         except AttributeError:
             pass
 
@@ -480,7 +517,8 @@ class CheckSensors(Check):
             if temps:
                 for name, entries in temps.items():
                     for entry in entries:
-                        self.add_field_value(f"{name}_{entry.label or ''}", entry.current, "°C")
+                        self.add_field_value(
+                            f"{name}_{entry.label or ''}", entry.current, "°C")
             else:
                 self.logger.debug("No temperatures detected")
         else:
@@ -491,7 +529,8 @@ class CheckSensors(Check):
             if fans:
                 for name, entries in fans.items():
                     for entry in entries:
-                        self.add_field_value(f"{name}_{entry.label or ''}", entry.current, "rpm")
+                        self.add_field_value(
+                            f"{name}_{entry.label or ''}", entry.current, "rpm")
             else:
                 self.logger.debug("No fans detected")
         else:
@@ -562,7 +601,8 @@ class CheckDisks(Check):
                 else:
                     device = self.devices[p]
             self.add_field_value('read', c.read_bytes, 'bytes', device=device)
-            self.add_field_value('write', c.write_bytes, 'bytes', device=device)
+            self.add_field_value('write', c.write_bytes,
+                                 'bytes', device=device)
 
 
 class CheckMounts(Check):
@@ -648,8 +688,10 @@ class CheckNetgearGS108E(Check):
         self.source_mac = config['source']
         self.switch_mac = config['switch']
         self.client = config['nsdp_client']
-        self.re_port_status = re.compile(r'Status: ([0-9]+):(\w+)$', re.MULTILINE)
-        self.re_port_statistic = re.compile(r'Statistics: ([0-9]+):rx=([0-9]+),tx=([0-9]+)$', re.MULTILINE)
+        self.re_port_status = re.compile(
+            r'Status: ([0-9]+):(\w+)$', re.MULTILINE)
+        self.re_port_statistic = re.compile(
+            r'Statistics: ([0-9]+):rx=([0-9]+),tx=([0-9]+)$', re.MULTILINE)
 
     def read_property(self, prop):
         try:
@@ -668,18 +710,22 @@ class CheckNetgearGS108E(Check):
             if 'Disconnected' == p[1]:
                 self.add_field_value('link', 0, unit='mbit', device=device)
             else:
-                self.add_field_value('link', int(p[1][:-1]), unit='mbit', device=device)
+                self.add_field_value('link', int(
+                    p[1][:-1]), unit='mbit', device=device)
                 connected_ports.add(device)
         return connected_ports
 
     def get_port_statistics(self, connected_ports):
         """Port Statistics: 1:rx=0,tx=0"""
-        values = self.read_property(CheckNetgearGS108E.PROPERTY_PORT_STATISTICS)
+        values = self.read_property(
+            CheckNetgearGS108E.PROPERTY_PORT_STATISTICS)
         for p in self.re_port_statistic.findall(values):
             device = f'port{p[0]}'
             if device in connected_ports:
-                self.add_field_value('recv', int(p[1]), unit='bytes', device=device)
-                self.add_field_value('sent', int(p[2]), unit='bytes', device=device)
+                self.add_field_value('recv', int(
+                    p[1]), unit='bytes', device=device)
+                self.add_field_value('sent', int(
+                    p[2]), unit='bytes', device=device)
 
     def on_run(self):
         if self.logger.isEnabledFor(logging.DEBUG):
@@ -757,8 +803,10 @@ class CheckNetgearGS108Ev2(Check):
             port = int(p['port'])
             device = self.device_name(port)
             if port in connected_ports:
-                self.add_field_value('recv', int(p['rec']), unit='bytes', device=device)
-                self.add_field_value('sent', int(p['send']), unit='bytes', device=device)
+                self.add_field_value('recv', int(
+                    p['rec']), unit='bytes', device=device)
+                self.add_field_value('sent', int(
+                    p['send']), unit='bytes', device=device)
                 self.add_field_value('errors', int(p['error']), device=device)
 
 
@@ -788,9 +836,11 @@ class CheckUPS(Check):
         # https://networkupstools.org/docs/developer-guide.chunked/apas01.html
         ups_vars = client.list_vars(self.ups)
         self.add_field_value('charge', int(ups_vars['battery.charge']), '%')
-        self.add_field_value('runtime', int(ups_vars['battery.runtime']), 'seconds')
+        self.add_field_value('runtime', int(
+            ups_vars['battery.runtime']), 'seconds')
         self.add_field_value('input', float(ups_vars['input.voltage']), 'V')
-        self.add_field_value('load', float(ups_vars['ups.load']) / 100.0 * int(ups_vars['ups.realpower.nominal']), 'W')
+        self.add_field_value('load', float(
+            ups_vars['ups.load']) / 100.0 * int(ups_vars['ups.realpower.nominal']), 'W')
         status = ups_vars['ups.status']
         if 'OL' == status:
             status = 'online'
@@ -840,15 +890,18 @@ class CheckDocker(Check):
         # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
         # also see https://docs.docker.com/engine/api/v1.21/
         ns_per_second = 1000000.0
-        user = float(data["cpu_stats"]["cpu_usage"]["usage_in_usermode"]) / ns_per_second
-        system = (float(data["cpu_stats"]["cpu_usage"]["total_usage"]) - user) / ns_per_second
+        user = float(data["cpu_stats"]["cpu_usage"]
+                     ["usage_in_usermode"]) / ns_per_second
+        system = (float(data["cpu_stats"]["cpu_usage"]
+                  ["total_usage"]) - user) / ns_per_second
         return user, system
 
     def _calculate_blkio_bytes(self, data):
         """Return disk I/O as (read,written) in bytes"""
         # credit to sen
         # https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
-        bytes_stats = self._graceful_chain_get(data, "blkio_stats", "io_service_bytes_recursive")
+        bytes_stats = self._graceful_chain_get(
+            data, "blkio_stats", "io_service_bytes_recursive")
         if not bytes_stats:
             return 0, 0
         read = 0
@@ -928,7 +981,8 @@ class CheckDockerV2(Check):
                 self.name = api_container.name
                 self.id = api_container.id
 
-        self.containers = [Container(c) for c in client.containers.list(sparse=False)]
+        self.containers = [Container(c)
+                           for c in client.containers.list(sparse=False)]
         self._stale_container_list = False
 
     def read_sysfs_node(self, path, key_index=0):
@@ -938,7 +992,8 @@ class CheckDockerV2(Check):
             with open(path) as node:
                 for line in node.readlines():
                     line_parts = line.strip().split(' ')
-                    values[line_parts[key_index]] = ' '.join(line_parts[key_index + 1:])
+                    values[line_parts[key_index]] = ' '.join(
+                        line_parts[key_index + 1:])
             # self.logger.debug(f"{path} yields {values}")
             return values
         except IOError:
@@ -952,9 +1007,11 @@ class CheckDockerV2(Check):
         if sysfs_traffic:
             values = {}
             for interface, raw_values in sysfs_traffic.items():
-                interface_values = [s for s in raw_values.split(' ') if s.strip()]
+                interface_values = [
+                    s for s in raw_values.split(' ') if s.strip()]
                 if interface.startswith('eth'):
-                    values[interface.strip(':')] = (interface_values[0], interface_values[8])
+                    values[interface.strip(':')] = (
+                        interface_values[0], interface_values[8])
             # self.logger.debug(f"/proc/{pid}/net/dev yields {values}")
             return values
         self.logger.warning(f"Failed to read /proc/{pid}/net/dev")
@@ -967,19 +1024,26 @@ class CheckDockerV2(Check):
         for container in self.containers:
             name = f"container '{container.name}'"
             # see https://crate.io/a/analyzing-docker-container-performance-native-tools/
-            sysfs_memory = self.read_sysfs_node(f"/sys/fs/cgroup/memory/docker/{container.id}/memory.stat")
+            sysfs_memory = self.read_sysfs_node(
+                f"/sys/fs/cgroup/memory/docker/{container.id}/memory.stat")
             if sysfs_memory:
-                self.add_field_value('memory', int(sysfs_memory['total_rss']), 'bytes', device=name)
-            sysfs_cpu = self.read_sysfs_node(f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
+                self.add_field_value('memory', int(
+                    sysfs_memory['total_rss']), 'bytes', device=name)
+            sysfs_cpu = self.read_sysfs_node(
+                f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
             if sysfs_cpu:
                 userhz_2_s = 1.0 / 100.0
-                cpu_total_userhz = float(sysfs_cpu['user']) + float(sysfs_cpu['system'])
-                self.add_field_value('cpu', cpu_total_userhz * userhz_2_s / self.cpu_count, 'seconds', device=name)
+                cpu_total_userhz = float(
+                    sysfs_cpu['user']) + float(sysfs_cpu['system'])
+                self.add_field_value(
+                    'cpu', cpu_total_userhz * userhz_2_s / self.cpu_count, 'seconds', device=name)
             sysfs_io_bytes = self.read_sysfs_node(
                 f"/sys/fs/cgroup/blkio/docker/{container.id}/blkio.throttle.io_service_bytes", key_index=1)
             if sysfs_io_bytes:
-                self.add_field_value('read', float(sysfs_io_bytes['Read']), 'bytes', device=name)
-                self.add_field_value('written', float(sysfs_io_bytes['Write']), 'bytes', device=name)
+                self.add_field_value('read', float(
+                    sysfs_io_bytes['Read']), 'bytes', device=name)
+                self.add_field_value('written', float(
+                    sysfs_io_bytes['Write']), 'bytes', device=name)
             sysfs_tasks = self.read_sysfs_node(
                 f"/sys/fs/cgroup/devices/docker/{container.id}/tasks")
             if sysfs_tasks:
@@ -1024,16 +1088,19 @@ class CheckAge(Check):
 
     def on_run(self):
         if self.file.exists():
-            time = datetime.datetime.strptime(self.file.read_text().strip(), self.formatstr)
+            time = datetime.datetime.strptime(
+                self.file.read_text().strip(), self.formatstr)
             now = datetime.datetime.now()
             age_days = float((now - time).days)
-            self.add_field_value('age', age_days, 'days', device=self.file.name)
+            self.add_field_value('age', age_days, 'days',
+                                 device=self.file.name)
             if self.max_age and age_days > self.max_age:
                 self.set_fail(device=self.file.name)
             else:
                 self.set_pass(device=self.file.name)
         else:
-            self.add_field_value('age', CHECK_ERROR_S, 'days', device=self.file.name)
+            self.add_field_value('age', CHECK_ERROR_S,
+                                 'days', device=self.file.name)
             self.set_fail(device=self.file.name)
 
 
@@ -1051,7 +1118,8 @@ class CheckSystem(Check):
     def on_run(self):
         boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
         now = datetime.datetime.now()
-        self.add_field_value('uptime', (now - boot_time).total_seconds(), 'seconds')
+        self.add_field_value(
+            'uptime', (now - boot_time).total_seconds(), 'seconds')
         active_users = len(psutil.users())
         self.add_field_value('active_users', active_users)
         if self.max_users and active_users > self.max_users:
@@ -1137,18 +1205,23 @@ class CheckKostalSCB(Check):
         self.connection = self.plenticore_connect(self.ip, self.password)
 
     def fetch_processdata(self, field, moduleid, description):
-        devices = self.connection.getProcessdata(moduleid, list(description.keys()))
+        devices = self.connection.getProcessdata(
+            moduleid, list(description.keys()))
         for d in devices:
             d_id = d['id']
             desc = description.get(d_id, None)
             if desc:
-                self.add_field_value(desc['device'], d['value'], unit=desc['unit'], device=field)
+                self.add_field_value(
+                    desc['device'], d['value'], unit=desc['unit'], device=field)
 
     def on_run(self):
         try:
-            self.fetch_processdata("load", "devices:local", CheckKostalSCB.DEVICES_LOCAL)
-            self.fetch_processdata("statistics", "scb:statistic:EnergyFlow", CheckKostalSCB.STATISTICS)
-            self.fetch_processdata("battery", "devices:local:battery", CheckKostalSCB.BATTERY)
+            self.fetch_processdata(
+                "load", "devices:local", CheckKostalSCB.DEVICES_LOCAL)
+            self.fetch_processdata(
+                "statistics", "scb:statistic:EnergyFlow", CheckKostalSCB.STATISTICS)
+            self.fetch_processdata(
+                "battery", "devices:local:battery", CheckKostalSCB.BATTERY)
         except Exception:
             self.connection = self.plenticore_connect(self.ip, self.password)
             self.connection.login()
@@ -1171,7 +1244,8 @@ class CheckRemote(Check):
                 time = result[Check.Result.TIME]
                 if not isinstance(time, datetime.datetime):
                     # convert from an HTTP date
-                    time = datetime.datetime.strptime(time, "%a, %d %b %Y %H:%M:%S %Z")
+                    time = datetime.datetime.strptime(
+                        time, "%a, %d %b %Y %H:%M:%S %Z")
                 result[Check.Result.TIME] = time
             pass
         else:

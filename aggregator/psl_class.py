@@ -24,9 +24,11 @@ def get_hw_addr(ifname):
     "gives the hardware (mac) address of an interface (eth0,eth1..)"
     return netifaces.ifaddresses(ifname)[netifaces.AF_LINK][0]['addr']
 
+
 def get_ip_address(ifname):
     "returns the first ip address of an interface"
     return netifaces.ifaddresses(ifname)[2][0]['addr']
+
 
 def pack_mac(value):
     "packs the hardware address (mac) to the internal representation"
@@ -77,19 +79,19 @@ class ProSafeLinux:
     CMD_QUALITY_OF_SERVICE = psl_typ.PslTypQos(0x3400, "qos")
     CMD_PORT_BASED_QOS = psl_typ.PslTypPortBasedQOS(0x3800, "port_based_qos")
     CMD_BANDWIDTH_INCOMING_LIMIT = psl_typ.PslTypBandwidth(
-                                              0x4c00, "bandwidth_in")
+        0x4c00, "bandwidth_in")
     CMD_BANDWIDTH_OUTGOING_LIMIT = psl_typ.PslTypBandwidth(
-                                              0x5000, "bandwidth_out")
+        0x5000, "bandwidth_out")
     CMD_FIXME5400 = psl_typ.PslTypHex(0x5400, "fixme5400")
     CMD_BROADCAST_BANDWIDTH = psl_typ.PslTypBandwidth(0x5800,
-                 "broadcast_bandwidth")
+                                                      "broadcast_bandwidth")
     CMD_PORT_MIRROR = psl_typ.PslTypPortMirror(0x5c00, "port_mirror")
     CMD_NUMBER_OF_PORTS = psl_typ.PslTypHex(0x6000, "number_of_ports")
     CMD_IGMP_SNOOPING = psl_typ.PslTypIGMPSnooping(0x6800, "igmp_snooping")
     CMD_BLOCK_UNKNOWN_MULTICAST = psl_typ.PslTypBoolean(
-                                              0x6c00, "block_unknown_multicast")
+        0x6c00, "block_unknown_multicast")
     CMD_IGMP_HEADER_VALIDATION = psl_typ.PslTypBoolean(0x7000,
-        "igmp_header_validation")
+                                                       "igmp_header_validation")
     CMD_FIXME7400 = psl_typ.PslTypHex(0x7400, "fixme7400")
     CMD_END = psl_typ.PslTypEnd(0xffff, "END")
 
@@ -107,7 +109,7 @@ class ProSafeLinux:
         self.srcmac = None
         self.ssocket = None
         self.rsocket = None
-        self.timeout=0.1
+        self.timeout = 0.1
 
         # i still see no win in randomizing the starting sequence...
         self.seq = random.randint(100, 2000)
@@ -115,13 +117,13 @@ class ProSafeLinux:
         self.mac_cache = {}
         self.cmd_by_id = {}
         self.cmd_by_name = {}
-        for key, value in  inspect.getmembers(ProSafeLinux):
+        for key, value in inspect.getmembers(ProSafeLinux):
             if key.startswith("CMD_"):
                 self.cmd_by_name[value.get_name()] = value
                 self.cmd_by_id[value.get_id()] = value
 
     def set_timeout(self, timeout):
-        self.timeout=timeout
+        self.timeout = timeout
 
     def bind(self, interface):
         "bind to an interface"
@@ -131,7 +133,8 @@ class ProSafeLinux:
         self.srcmac = pack_mac(get_hw_addr(interface))
 
         # send socket, can also be used to receive unicast!
-        self.ssocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self.ssocket = socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.ssocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.ssocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.ssocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -181,7 +184,6 @@ class ProSafeLinux:
         else:
             return False
 
-
     def set_debug_output(self):
         "set debugging"
         self.debug = True
@@ -189,7 +191,8 @@ class ProSafeLinux:
     def recv(self, maxlen=8192):
         "receive a packet from the switch"
 
-        sel = select.select([self.ssocket.fileno(), self.rsocket.fileno()], [], [], self.timeout)
+        sel = select.select(
+            [self.ssocket.fileno(), self.rsocket.fileno()], [], [], self.timeout)
         if sel[0] and sel[0][0] == self.ssocket.fileno():
             rsock = self.ssocket
         else:
@@ -223,7 +226,7 @@ class ProSafeLinux:
         if pack == None:
             return False
         if self.debug:
-            pprint.pprint(len(pack[2:4])) 
+            pprint.pprint(len(pack[2:4]))
         data = {}
         if struct.unpack(">H", pack[2:4])[0] != 0x0000:
             errorcmd = self.get_cmd_by_hex(struct.unpack(">H", pack[4:6])[0])
@@ -237,21 +240,21 @@ class ProSafeLinux:
 #        data["theirmac"] = binascii.hexlify(pack[14:20]).decode()
         pos = 32
         cmd_id = 0
-        while (pos<len(pack)):
+        while (pos < len(pack)):
             if self.debug:
-                print("pos:%d len: %d" %(pos,len(pack)))
+                print("pos:%d len: %d" % (pos, len(pack)))
             cmd_id = struct.unpack(">H", pack[pos:(pos + 2)])[0]
             if self.get_cmd_by_hex(cmd_id):
                 cmd = self.get_cmd_by_hex(cmd_id)
             else:
                 # we don't need a switch for "unknown_warn" here...let the client handle unknown responses
-#                print("Unknown Response %d" % cmd_id)
+                #                print("Unknown Response %d" % cmd_id)
                 cmd = psl_typ.PslTypUnknown(cmd_id, "UNKNOWN %d" % cmd_id)
             pos = pos + 2
             cmdlen = struct.unpack(">H", pack[pos:(pos + 2)])[0]
             pos = pos + 2
             if cmdlen > 0:
-                    value = cmd.unpack_cmd(pack[pos:(pos + cmdlen)])
+                value = cmd.unpack_cmd(pack[pos:(pos + cmdlen)])
             else:
                 value = None
             if cmd in data and value != None:
@@ -261,7 +264,7 @@ class ProSafeLinux:
             elif value != None:
                 data[cmd] = value
             if self.debug:
-                print("cmd_id %d of length %d :" % (cmd_id, cmdlen)) 
+                print("cmd_id %d of length %d :" % (cmd_id, cmdlen))
                 data_hex = binascii.hexlify(pack[pos:(pos + cmdlen)]).decode()
                 print("data=" + data_hex)
             pos = pos + cmdlen
@@ -284,7 +287,7 @@ class ProSafeLinux:
         if len(destmac) > 6:
             destmac = pack_mac(destmac)
         data = (struct.pack(">h", ctype) + 6 * reserved + self.srcmac +
-                     destmac + 2 * reserved)
+                destmac + 2 * reserved)
         data += struct.pack(">h", self.seq)
         data += b"NSDP" + 4 * reserved
         return data
@@ -308,14 +311,16 @@ class ProSafeLinux:
         if mac in self.mac_cache:
             return self.mac_cache[mac]
         # FIXME: Search in /proc/net/arp if mac there use this one
-        #with open("/proc/net/arp") as f:
+        # with open("/proc/net/arp") as f:
         # for line in f:
         #   print line
         query_arr = [self.CMD_MAC, self.CMD_IP]
-        message, address = self.query(query_arr, mac, with_address=True, use_ip_func=False)
+        message, address = self.query(
+            query_arr, mac, with_address=True, use_ip_func=False)
         if message == None:
             # try once more
-            message, address = self.query(query_arr, mac, with_address=True, use_ip_func=False)
+            message, address = self.query(
+                query_arr, mac, with_address=True, use_ip_func=False)
         if message != None and message != False:
             if self.CMD_MAC in message:
                 if message[self.CMD_MAC].capitalize() == mac.capitalize():
@@ -352,7 +357,7 @@ class ProSafeLinux:
         ipadr = self.ip_from_mac(mac)
         data = self.baseudp(destmac=mac, ctype=self.CTYPE_TRANSMIT_REQUEST)
         firmwarevers = self.query(self.get_cmd_by_name("firmwarever"), mac)
-        firmwarevers = firmwarevers.values()[0].translate({ord("."):None})
+        firmwarevers = firmwarevers.values()[0].translate({ord("."): None})
         # New firmwares put capital leter V in front ...
         if "V" == firmwarevers[0]:
             firmwarevers = firmwarevers[1:]
@@ -360,8 +365,8 @@ class ProSafeLinux:
         if type(cmddict).__name__ == 'dict':
             if self.CMD_PASSWORD in cmddict:
                 if int(firmwarevers) > 10004:
-                    print("using password hack on firmware: %s" % 
-                            (firmwarevers))
+                    print("using password hack on firmware: %s" %
+                          (firmwarevers))
                     _hashkey = "NtgrSmartSwitchRock"
                     _plainpass = cmddict[self.CMD_PASSWORD]
                     _password = ""
@@ -384,7 +389,7 @@ class ProSafeLinux:
             message, address = self.recv_all()
             transmit_counter += 1
         if message == None:
-            return { 'error' : 'no result received within 3 seconds' }
+            return {'error': 'no result received within 3 seconds'}
         return self.parse_data(message)
 
     def passwd_exploit(self, mac, new):
@@ -393,14 +398,14 @@ class ProSafeLinux:
         data = self.addudp(self.CMD_NEW_PASSWORD, new)
         data += self.addudp(self.CMD_PASSWORD, new)
         return self.transmit(data, mac)
- 
+
     def discover(self):
         "find any switch in the network"
         query_arr = [self.CMD_MODEL,
-                   self.CMD_NAME,
-                   self.CMD_MAC,
-                   self.CMD_DHCP,
-                   self.CMD_IP]
+                     self.CMD_NAME,
+                     self.CMD_MAC,
+                     self.CMD_DHCP,
+                     self.CMD_IP]
         message = self.query(query_arr, None)
         if message != False:
             self.mac_cache[message[self.CMD_MAC]] = message[self.CMD_IP]
@@ -413,18 +418,21 @@ class ProSafeLinux:
             if datadict[ProSafeLinux.CMD_DHCP]:
                 if ((ProSafeLinux.CMD_IP in datadict) or
                     (ProSafeLinux.CMD_GATEWAY in datadict) or
-                    (ProSafeLinux.CMD_NETMASK in datadict)):
-                    errors.append("When dhcp=on, no ip,gateway nor netmask is allowed")
+                        (ProSafeLinux.CMD_NETMASK in datadict)):
+                    errors.append(
+                        "When dhcp=on, no ip,gateway nor netmask is allowed")
             else:
                 if (not((ProSafeLinux.CMD_IP in datadict) and
-                  (ProSafeLinux.CMD_GATEWAY in datadict) and
-                  (ProSafeLinux.CMD_NETMASK in datadict))):
-                    errors.append("When dhcp=off, specify ip,gateway and netmask")
+                        (ProSafeLinux.CMD_GATEWAY in datadict) and
+                        (ProSafeLinux.CMD_NETMASK in datadict))):
+                    errors.append(
+                        "When dhcp=off, specify ip,gateway and netmask")
         else:
             if ((ProSafeLinux.CMD_IP in datadict) or
-              (ProSafeLinux.CMD_GATEWAY in datadict) or
-              (ProSafeLinux.CMD_NETMASK in datadict)):
-                errors.append("Use dhcp off,ip,gateway and netmask option together")
+                (ProSafeLinux.CMD_GATEWAY in datadict) or
+                    (ProSafeLinux.CMD_NETMASK in datadict)):
+                errors.append(
+                    "Use dhcp off,ip,gateway and netmask option together")
 
         if len(errors) > 0:
             return (False, errors)
