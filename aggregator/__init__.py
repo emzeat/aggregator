@@ -25,6 +25,7 @@ def handle_env(line: str):
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(
+        prog='aggregator',
         description='Lightweight system monitoring daemon')
     parser.add_argument('-v', '--verbose', help='Enable verbose logging',
                         action='store_true', default=False)
