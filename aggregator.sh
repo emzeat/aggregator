@@ -35,12 +35,19 @@ else
     source $venv/bin/activate
 fi
 
-md5_new=$(md5 -q requirements.txt)
-md5_inst=$(md5 -q $venv/requirements.txt 2> /dev/null)
+# macOS has md5, Linux is using md5sum
+if command -v md5 > /dev/null; then
+    md5=md5
+else
+    md5=md5sum
+fi
+
+md5_new=$($md5 requirements.txt aggregator.sh)
+md5_inst=$(cat $venv/requirements.log 2> /dev/null)
 if [ ! "$md5_new" = "$md5_inst" ]; then
     echo "Need to update dependencies"
     if python3 -m pip --disable-pip-version-check install -r requirements.txt; then
-        cp requirements.txt $venv/requirements.txt
+        echo "$md5_new" > $venv/requirements.log
     else
         exit 1
     fi
