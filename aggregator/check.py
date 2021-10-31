@@ -123,7 +123,7 @@ class Check:
         self.logger = logging.getLogger(
             f"aggregator.check.{name}({self.host})")
         self.interval = config.get('interval', default_interval)
-        self.host = config['host']
+        self.ignore_failure = config.get('ignore_failure', False)
         self.last_state = {}
         self.status = {}
         self._reset()
@@ -163,8 +163,9 @@ class Check:
 
     def set_fail(self, device: str = DEFAULT_DEVICE):
         """Marks the check for device as failed"""
-        status = self.status.get(device, Check.STATUS_OK)
-        self.status[device] = min(Check.STATUS_FAILED, status + 1)
+        if not self.ignore_failure:
+            status = self.status.get(device, Check.STATUS_OK)
+            self.status[device] = min(Check.STATUS_FAILED, status + 1)
 
     def run(self):
         """Executes the checks implemented by this class"""
