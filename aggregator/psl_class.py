@@ -1,23 +1,35 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+"""
+ psl_class.py
 
-# Adapted from https://github.com/Z3po/ProSafeLinux
-# This software is released under terms equivalent to the "FreeBSD license"
-# No copyright is transferred to the FreeBSD project and this project is not affiliated with the FreeBSD project.
+ Copyright (c) 2011 - 2020 ProSafeLinux Project
+ Copyright (c) 2021 Marius Zwicker
+ All rights reserved.
 
-"Main Class to communicate with gs108e and gs105e netgear switches"
-import time
-import binascii
-import pprint
-import random
-import struct
-import socket
-import fcntl
-from . import psl_typ
-import inspect
-import errno
-import select
+ Forked from https://github.com/Z3po/ProSafeLinux
+
+ SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+
+ This code is released under terms equivalent to the "FreeBSD license".
+
+ No copyright is transferred to the FreeBSD project and this project is
+ not affiliated with the FreeBSD project.
+"""
+
 import netifaces
+import select
+import errno
+import inspect
+from . import psl_typ
+import fcntl
+import socket
+import struct
+import random
+import pprint
+import binascii
+import time
+"Main Class to communicate with gs108e and gs105e netgear switches"
 
 
 def get_hw_addr(ifname):

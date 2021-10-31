@@ -16,6 +16,10 @@ repos:
         args: [--autofix, --no-sort-keys, --no-ensure-ascii]
     -   id: requirements-txt-fixer
 -   repo: https://github.com/pre-commit/mirrors-autopep8
-    rev: 'v1.5.7'
+    rev: v1.5.7
     hooks:
     -   id: autopep8
+-   repo: https://github.com/emzeat/license-tools
+    rev: v2.0
+    hooks:
+    -   id: license-tools

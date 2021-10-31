@@ -1,12 +1,24 @@
 # -*- coding: utf-8 -*-
-"Base Types for ProSafeLinux Class"
+"""
+ psl_typ.py
 
-# Adapted from https://github.com/Z3po/ProSafeLinux
-# This software is released under terms equivalent to the "FreeBSD license"
-# No copyright is transferred to the FreeBSD project and this project is not affiliated with the FreeBSD project.
+ Copyright (c) 2011 - 2020 ProSafeLinux Project
+ Copyright (c) 2021 Marius Zwicker
+ All rights reserved.
 
-import binascii
+ Forked from https://github.com/Z3po/ProSafeLinux
+
+ SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+
+ This code is released under terms equivalent to the "FreeBSD license".
+
+ No copyright is transferred to the FreeBSD project and this project is
+ not affiliated with the FreeBSD project.
+"""
+
 import struct
+import binascii
+"Base Types for ProSafeLinux Class"
 
 
 class PslTyp:
