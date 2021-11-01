@@ -1,0 +1,14 @@
+{
+  "author": {
+    "from_git": true
+  },
+  "license": "GPL-2.0-or-later",
+  "include": [
+    "**/*.sh",
+    "**/*.py"
+  ],
+  "exclude": [
+    "\\.[^/]+/",
+    "\\.[^/]"
+  ]
+}
