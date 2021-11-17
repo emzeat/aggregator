@@ -789,8 +789,8 @@ class CheckNetgearGS108Ev2(Check):
             return f"port{port}"
 
     def on_run(self):
-        from .psl_class import ProSafeLinux
-        from .psl_typ import PslTypSpeedStat
+        from .external.psl_class import ProSafeLinux
+        from .external.psl_typ import PslTypSpeedStat
         switch = ProSafeLinux()
         switch.set_timeout(self.timeout)
         switch.bind(self.interface)
