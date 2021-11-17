@@ -22,7 +22,9 @@
 """
 
 import abc
+import copy
 import datetime
+import json
 import logging
 import pathlib
 import socket
@@ -1218,10 +1220,14 @@ class CheckKostalSCB(Check):
             'device': 'Energiefluss Batterie'
         },
     }
+    CONFIG = merge_dict(Check.CONFIG, {
+        'ip': 'str: IP Addres of the Kostal SCB',
+        'password': 'str: Password used for authentication'
+    })
 
     def __init__(self, config: dict):
         """Constructor"""
-        super().__init__(name='system', config=config)
+        super().__init__(name='kostal_scb', config=config)
         import kostalplenticore
         self.plenticore_connect = kostalplenticore.connect
         self.ip = config['ip']
@@ -1250,6 +1256,209 @@ class CheckKostalSCB(Check):
             self.connection = self.plenticore_connect(self.ip, self.password)
             self.connection.login()
             raise
+
+
+class CheckWemPortal(Check):
+    """Fetches data from the Weishaupt WEM portal"""
+
+    HEADERS = {
+        "User-Agent": "WeishauptWEMApp",
+        "X-Api-Version": "2.0.0.0",
+        "Accept": "*/*"
+    }
+
+    PARAMS_BLACKLIST = {
+        "Heizprogramm1",
+        "PP_Funktion",
+        "WW-Push",
+        "WW-Programm"
+    }
+
+    CONFIG = merge_dict(Check.CONFIG, {
+        'username': 'str: Usename used for authentication',
+        'password': 'str: Password used for authentication',
+        'device': 'str: Name of the device as configured in the WEM Portal'
+    })
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='wem_portal', config=config)
+        self.username = config['username']
+        self.password = config['password']
+        self.device_name = config['device']
+        self.device_id = None
+        self.session = None
+        self.all_modules = []
+        self.modules = []
+        self.failure = None
+
+    def login(self):
+        request = {
+            "Name": self.username,
+            "PasswordUTF8": self.password,
+            "AppID": "com.weishaupt.wemapp",
+            "AppVersion": "2.0.2",
+            "ClientOS": "Android",
+        }
+        self.session = requests.Session()
+        self.session.cookies.clear()
+        self.session.headers.update(CheckWemPortal.HEADERS)
+        response = self.session.post(
+            "https://www.wemportal.com/app/Account/Login",
+            data=request,
+        )
+        if response.status_code != 200:
+            self.logger.error(
+                "Authentication failure - "
+                + f"status_code: {response.status_code} "
+                + f"response: {response.content}"
+            )
+            self.session = None
+        else:
+            data = response.json()
+            self.logger.debug(
+                f"Authenticated as {data['Forename']} {data['Surname']}")
+
+    def fetch_devices(self):
+        self.logger.debug("Fetching api device data")
+        self.all_modules = []
+        self.modules = []
+        response = self.session.get(
+            "https://www.wemportal.com/app/device/Read"
+        )
+        # If session expired
+        if response.status_code == 401:
+            self.session = None
+            return
+        elif response.status_code != 200:
+            self.logger.error(
+                f"{response.status_code} failed to fetch device info: {response.content}")
+            return
+
+        data = response.json()
+        for device in data.get('Devices', []):
+            if device.get('Name') == self.device_name:
+                self.device_id = device.get("ID", None)
+                self.all_modules = device.get("Modules", [])
+                break
+
+    def fetch_params(self):
+        self.logger.debug("Fetching api parameters data")
+        for module in self.all_modules:
+            # Module is built like
+            # {'Index': 1, 'CustomNumbering': None, 'Name': 'System ', 'Type': 1, 'Dynamisation': False, 'FWUVersion': 'ecbiblock'}
+            request = {
+                "DeviceID": self.device_id,
+                "ModuleIndex": module["Index"],
+                "ModuleType": module["Type"],
+            }
+            response = self.session.post(
+                "https://www.wemportal.com/app/EventType/Read",
+                data=request,
+            )
+            # If session expired
+            if response.status_code == 401:
+                self.session = None
+                return
+            elif response.status_code != 200:
+                self.logger.error(
+                    f"{response.status_code} failed to fetch module info: {response.content}")
+                return
+
+            data = response.json()
+            # each param is like
+            # {'ParameterID': 'Außentemperatur', 'Name': 'Außentemperatur', 'DataType': -1, 'MinValue': 0.0, 'MaxValue': 0.0, 'DefaultValue': '', 'IsReadable': True, 'IsWriteable': False, 'EnumValues': None}
+            params = data.get('Parameters', None)
+            if params:
+                module['Params'] = []
+                for param in params:
+                    if param.get('IsReadable', False) and param.get('ParameterID') not in CheckWemPortal.PARAMS_BLACKLIST:
+                        module['Params'].append(param)
+                    else:
+                        self.logger.debug(
+                            f"Ignoring param {param.get('ParameterID')} on module {module.get('Name')}")
+            else:
+                self.logger.debug(f"No params on module {module.get('Name')}")
+        self.modules = [
+            module for module in self.all_modules if module.get('Params', None)]
+
+    def fetch_data(self):
+        request = {
+            "DeviceID": self.device_id,
+            "Modules": [
+                {
+                    "ModuleIndex": module["Index"],
+                    "ModuleType": module["Type"],
+                    "Parameters": [
+                        {"ParameterID": param['ParameterID']}
+                        for param in module["Params"]
+                    ],
+                }
+                for module in self.modules
+            ],
+        }
+        headers = copy.deepcopy(CheckWemPortal.HEADERS)
+        headers["Content-Type"] = "application/json"
+        response = self.session.post(
+            "https://www.wemportal.com/app/DataAccess/Refresh",
+            headers=headers,
+            data=json.dumps(request),
+        )
+        if response.status_code == 401:
+            self.session = None
+            return
+        elif response.status_code != 200:
+            self.logger.debug(
+                f"{response.status_code} failed to refresh data: {response.content}")
+            # ignore refresh
+
+        response = self.session.post(
+            "https://www.wemportal.com/app/DataAccess/Read",
+
+            headers=headers,
+            data=json.dumps(request),
+        )
+        if response.status_code == 401:
+            self.session = None
+            return
+        elif response.status_code != 200:
+            self.logger.error(
+                f"{response.status_code} failed to fetch data: {response.content}")
+            return
+        data = response.json()
+        for module in data.get('Modules'):
+            # each module is a dict with an entry 'Values' which is a list
+            device = 'Unknown'
+            for candidate in self.modules:
+                if module['ModuleType'] == candidate['Type'] \
+                        and module['ModuleIndex'] == candidate['Index']:
+                    device = candidate['Name']
+                    break
+            for value in module.get('Values', []):
+                # each value is like
+                # {'Unit': '°C', 'Timestamp': '1637170013', 'Dynamisation': False, 'StringValue': 'Label ist null', 'NumericValue': 4.5, 'ParameterID': 'Außentemperatur'}
+                try:
+                    unit = value['Unit']
+                    # FIXME(zwicker): Name is only on the parameter definition
+                    name = value.get('Name', value.get('ParameterID'))
+                    val = value.get('StringValue', 'Label ist null')
+                    if val == 'Label ist null':
+                        val = value['NumericValue']
+                except KeyError:
+                    continue
+
+    def on_run(self):
+        if self.failure:
+            self.logger.error(f"Failed to access WEMPortal: {self.failure}")
+            return
+        if self.session is None:
+            self.login()
+        if self.session is None:
+            self.failure = 'Cannot authenticate'
+        if self.device_id is None or self.modules is None:
+            self.fetch_devices()
+            self.fetch_params()
+        self.fetch_data()
 
 
 class CheckRemote(Check):
@@ -1296,5 +1505,6 @@ CHECKS = {
     'age': CheckAge,
     'system': CheckSystem,
     'kostal': CheckKostalSCB,
-    'remote': CheckRemote
+    'remote': CheckRemote,
+    'wem_portal': CheckWemPortal
 }
