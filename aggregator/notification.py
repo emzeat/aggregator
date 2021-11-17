@@ -196,8 +196,11 @@ From: "{self.from_sender}" <{self.from_address}>
 
 class NullNotification(Notification):
 
-    def __init__(self, config):
-        super().__init__('null', config)
+    def __init__(self):
+        super().__init__('null', {})
 
     def send_message(self, subject, contents):
+        pass
+
+    def write(self, results: list):
         pass
