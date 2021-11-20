@@ -1282,15 +1282,19 @@ class CheckWemPortal(Check):
 
     def __init__(self, config: dict):
         """Constructor"""
+        # see discussion on https://github.com/erikkastelec/hass-WEM-Portal/issues/9
         super().__init__(name='wem_portal', config=config)
         self.username = config['username']
         self.password = config['password']
         self.device_name = config['device']
         self.device_id = None
+        self.device = None
         self.session = None
         self.all_modules = []
         self.modules = []
         self.failure = None
+        # hardcoded to 0 for now, if devicetype was 1 this would depend on the index of the actual module
+        self.stat_module_index = 0
 
     def login(self):
         request = {
@@ -1338,11 +1342,16 @@ class CheckWemPortal(Check):
         data = response.json()
         for device in data.get('Devices', []):
             if device.get('Name') == self.device_name:
+                self.device = device
                 self.device_id = device.get("ID", None)
                 self.all_modules = device.get("Modules", [])
+                if device.get('DeviceType') != 2:
+                    self.logger.warning(
+                        "Stats is not supported for this device type")
+                    self.stat_module_index = -1
                 break
 
-    def fetch_params(self):
+    def fetch_available_params(self):
         self.logger.debug("Fetching api parameters data")
         for module in self.all_modules:
             # Module is built like
@@ -1447,6 +1456,93 @@ class CheckWemPortal(Check):
                 except KeyError:
                     continue
 
+    def fetch_status(self):
+        self.logger.debug("Fetching device status")
+        request = {
+            "DeviceID": self.device_id
+        }
+        response = self.session.post(
+            "https://www.wemportal.com/app/DeviceStatus/Read",
+            data=request,
+        )
+        # If session expired
+        if response.status_code == 401:
+            self.session = None
+            return
+        elif response.status_code != 200:
+            self.logger.error(
+                f"{response.status_code} failed to fetch status: {response.content}")
+            return
+
+        data = response.json()
+        # result is built like
+        # {"ConnectionStatus":0,"HasKeepAliveError":false,"Errors":[],"Status":0,"Message":null,"DetailMessages":null}
+        pass
+
+    def fetch_stats(self):
+        if self.stat_module_index < 0:
+            self.logger.debug("Stats are not supported for the device type")
+            return
+
+        request = {
+            "DeviceID": self.device_id,
+        }
+        headers = copy.deepcopy(CheckWemPortal.HEADERS)
+        headers["Content-Type"] = "application/json"
+        response = self.session.post(
+            "https://www.wemportal.com/app/Statistics/Refresh",
+            headers=headers,
+            data=json.dumps(request),
+        )
+        if response.status_code == 401:
+            self.session = None
+            return
+        elif response.status_code != 200:
+            self.logger.debug(
+                f"{response.status_code} failed to refresh stats: {response.content}")
+            # ignore refresh
+        else:
+            data = response.json()
+            self.stats_job_id = data['JobID']
+            self.groups = data['GroupTypeDescriptions']
+
+        for group in self.groups:
+            # each group is like
+            # {'GroupType': 1, 'Description': 'Wärmemenge Heizung'}
+            request = {
+                "DeviceID": self.device_id,
+                "GroupType": group['GroupType'],
+                "ModuleIndex": self.stat_module_index,
+                # 7=MOD_WE 9=MOD_GERAET
+                "ModuleType": 7,
+                # 1=DAYS, 2=MONTHS, 3=YEARS
+                "Type": 3
+            }
+            response = self.session.post(
+                "https://www.wemportal.com/app/Statistics/Read",
+
+                headers=headers,
+                data=json.dumps(request),
+            )
+            if response.status_code == 401:
+                self.session = None
+                return
+            elif response.status_code != 200:
+                self.logger.error(
+                    f"{response.status_code} failed to fetch stats: {response.content}")
+                return
+            data = response.json()
+            # data is built like
+            # {
+            # 'Unit': 'kWh',
+            # 'Values': [{'Date': '2011-01-01T00:00:00Z', 'Value': 0.0}, ... , {'Date': '2021-01-01T00:00:00', 'Value': 1826.1}],
+            # 'Status': 0,
+            # 'Message': None,
+            # 'DetailMessages': None
+            # }
+            self.logger.info(f"data={data.get('Message')}")
+            pass
+
     def on_run(self):
         if self.failure:
             self.logger.error(f"Failed to access WEMPortal: {self.failure}")
@@ -1455,10 +1551,13 @@ class CheckWemPortal(Check):
             self.login()
         if self.session is None:
             self.failure = 'Cannot authenticate'
+            return
         if self.device_id is None or self.modules is None:
             self.fetch_devices()
-            self.fetch_params()
-        self.fetch_data()
+            self.fetch_available_params()
+        # self.fetch_data()
+        # self.fetch_status()
+        self.fetch_stats()
 
 
 class CheckRemote(Check):
