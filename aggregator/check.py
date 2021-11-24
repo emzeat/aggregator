@@ -1269,8 +1269,8 @@ class CheckWemPortal(Check):
 
     PARAMS_BLACKLIST = {
         "Heizprogramm1",
-        "PP_Funktion",
-        "WW-Push",
+        # "PP_Funktion",
+        # "WW-Push",
         "WW-Programm"
     }
 
@@ -1291,7 +1291,8 @@ class CheckWemPortal(Check):
         self.device = None
         self.session = None
         self.all_modules = []
-        self.modules = []
+        self.used_modules = []
+        self.indexed_modules = {}
         self.failure = None
         # hardcoded to 0 for now, if devicetype was 1 this would depend on the index of the actual module
         self.stat_module_index = 0
@@ -1326,7 +1327,7 @@ class CheckWemPortal(Check):
     def fetch_devices(self):
         self.logger.debug("Fetching api device data")
         self.all_modules = []
-        self.modules = []
+        self.used_modules = []
         response = self.session.get(
             "https://www.wemportal.com/app/device/Read"
         )
@@ -1388,8 +1389,10 @@ class CheckWemPortal(Check):
                             f"Ignoring param {param.get('ParameterID')} on module {module.get('Name')}")
             else:
                 self.logger.debug(f"No params on module {module.get('Name')}")
-        self.modules = [
+        self.used_modules = [
             module for module in self.all_modules if module.get('Params', None)]
+        self.indexed_modules = {
+            (m['Type'], m['Index']): m for m in self.used_modules}
 
     def fetch_data(self):
         request = {
@@ -1403,7 +1406,7 @@ class CheckWemPortal(Check):
                         for param in module["Params"]
                     ],
                 }
-                for module in self.modules
+                for module in self.used_modules
             ],
         }
         headers = copy.deepcopy(CheckWemPortal.HEADERS)
@@ -1437,15 +1440,22 @@ class CheckWemPortal(Check):
         data = response.json()
         for module in data.get('Modules'):
             # each module is a dict with an entry 'Values' which is a list
-            device = 'Unknown'
-            for candidate in self.modules:
-                if module['ModuleType'] == candidate['Type'] \
-                        and module['ModuleIndex'] == candidate['Index']:
-                    device = candidate['Name']
-                    break
+            index = (module['ModuleType'], module['ModuleIndex'])
+            device = self.indexed_modules.get(index, None)
+            if device:
+                device = device['Name'].strip()
+            else:
+                device = Check.DEFAULT_DEVICE
             for value in module.get('Values', []):
                 # each value is like
-                # {'Unit': '°C', 'Timestamp': '1637170013', 'Dynamisation': False, 'StringValue': 'Label ist null', 'NumericValue': 4.5, 'ParameterID': 'Außentemperatur'}
+                # {
+                #   'Unit': '°C',
+                #   'Timestamp': '1637170013',
+                #   'Dynamisation': False,
+                #   'StringValue': 'Label ist null',
+                #   'NumericValue': 4.5,
+                #   'ParameterID': 'Außentemperatur'
+                # }
                 try:
                     unit = value['Unit']
                     # FIXME(zwicker): Name is only on the parameter definition
@@ -1453,6 +1463,7 @@ class CheckWemPortal(Check):
                     val = value.get('StringValue', 'Label ist null')
                     if val == 'Label ist null':
                         val = value['NumericValue']
+                    self.add_field_value(name, val, unit, device)
                 except KeyError:
                     continue
 
@@ -1477,7 +1488,8 @@ class CheckWemPortal(Check):
         data = response.json()
         # result is built like
         # {"ConnectionStatus":0,"HasKeepAliveError":false,"Errors":[],"Status":0,"Message":null,"DetailMessages":null}
-        pass
+        self.add_field_value('ConnectionStatus', data['ConnectionStatus'])
+        self.add_field_value('Status', data['Status'])
 
     def fetch_stats(self):
         if self.stat_module_index < 0:
@@ -1535,13 +1547,17 @@ class CheckWemPortal(Check):
             # data is built like
             # {
             # 'Unit': 'kWh',
-            # 'Values': [{'Date': '2011-01-01T00:00:00Z', 'Value': 0.0}, ... , {'Date': '2021-01-01T00:00:00', 'Value': 1826.1}],
+            # 'Values': [{'Date': '2011-01-01T00:00:00Z', 'Value': 0.0} ... {'Date': '2021-01-01T00:00:00', 'Value': 1488.4}]
             # 'Status': 0,
             # 'Message': None,
             # 'DetailMessages': None
             # }
-            self.logger.info(f"data={data.get('Message')}")
-            pass
+            # simply summarize all years to get an increasing counter
+            total = 0
+            for value in data.get('Values', []):
+                total += value['Value']
+            self.add_field_value('Wärmemenge', total,
+                                 data['Unit'], device=group['Description'])
 
     def on_run(self):
         if self.failure:
@@ -1552,11 +1568,11 @@ class CheckWemPortal(Check):
         if self.session is None:
             self.failure = 'Cannot authenticate'
             return
-        if self.device_id is None or self.modules is None:
+        if self.device_id is None or self.used_modules is None:
             self.fetch_devices()
             self.fetch_available_params()
-        # self.fetch_data()
-        # self.fetch_status()
+        self.fetch_data()
+        self.fetch_status()
         self.fetch_stats()
 
 
