@@ -1371,9 +1371,9 @@ class CheckWemPortal(Check):
                 self.session = None
                 return
             elif response.status_code != 200:
-                self.logger.error(
+                self.logger.warning(
                     f"{response.status_code} failed to fetch module info: {response.content}")
-                return
+                continue
 
             data = response.json()
             # each param is like
@@ -1510,7 +1510,7 @@ class CheckWemPortal(Check):
             self.session = None
             return
         elif response.status_code != 200:
-            self.logger.debug(
+            self.logger.warning(
                 f"{response.status_code} failed to refresh stats: {response.content}")
             # ignore refresh
         else:
@@ -1523,6 +1523,7 @@ class CheckWemPortal(Check):
             # {'GroupType': 1, 'Description': 'Wärmemenge Heizung'}
             request = {
                 "DeviceID": self.device_id,
+                "JobID": self.stats_job_id,
                 "GroupType": group['GroupType'],
                 "ModuleIndex": self.stat_module_index,
                 # 7=MOD_WE 9=MOD_GERAET
@@ -1541,8 +1542,8 @@ class CheckWemPortal(Check):
                 return
             elif response.status_code != 200:
                 self.logger.error(
-                    f"{response.status_code} failed to fetch stats: {response.content}")
-                return
+                    f"{response.status_code} failed to fetch stats for group '{group['Description']}': {response.content}")
+                continue
             data = response.json()
             # data is built like
             # {
@@ -1556,8 +1557,9 @@ class CheckWemPortal(Check):
             total = 0
             for value in data.get('Values', []):
                 total += value['Value']
-            self.add_field_value('Wärmemenge', total,
-                                 data['Unit'], device=group['Description'])
+            if total > 0:
+                self.add_field_value('Wärmemenge', total,
+                                     data['Unit'], device=group['Description'])
 
     def on_run(self):
         if self.failure:
