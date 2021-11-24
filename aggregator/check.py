@@ -1274,6 +1274,10 @@ class CheckWemPortal(Check):
         "WW-Programm"
     }
 
+    GROUP_BLACKLIST = {
+        "Wärmemenge Solar"
+    }
+
     CONFIG = merge_dict(Check.CONFIG, {
         'username': 'str: Usename used for authentication',
         'password': 'str: Password used for authentication',
@@ -1519,6 +1523,9 @@ class CheckWemPortal(Check):
             self.groups = data['GroupTypeDescriptions']
 
         for group in self.groups:
+            g_desc = group['Description']
+            if g_desc in CheckWemPortal.GROUP_BLACKLIST:
+                continue
             # each group is like
             # {'GroupType': 1, 'Description': 'Wärmemenge Heizung'}
             request = {
@@ -1542,7 +1549,7 @@ class CheckWemPortal(Check):
                 return
             elif response.status_code != 200:
                 self.logger.error(
-                    f"{response.status_code} failed to fetch stats for group '{group['Description']}': {response.content}")
+                    f"{response.status_code} failed to fetch stats for group '{g_desc}': {response.content}")
                 continue
             data = response.json()
             # data is built like
@@ -1559,7 +1566,7 @@ class CheckWemPortal(Check):
                 total += value['Value']
             if total > 0:
                 self.add_field_value('Wärmemenge', total,
-                                     data['Unit'], device=group['Description'])
+                                     data['Unit'], device=g_desc)
 
     def on_run(self):
         if self.failure:
