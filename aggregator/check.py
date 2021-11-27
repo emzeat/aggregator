@@ -1596,6 +1596,33 @@ class CheckWemPortal(Check):
             self.status_timestamp = current_hour
 
 
+class CheckWallBoxEChargeCpu2(Check):
+    """Polling of data from the cPu2 Wallbox"""
+
+    CONFIG = merge_dict(Check.CONFIG, {
+        'ip': 'str: IP Address of the Wallbox'
+    })
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='wallbox_echarge_cpu2', config=config)
+        self.ip = config['ip']
+
+    def on_run(self):
+        results = requests.get(f'http://{self.ip}/api')
+        if 200 == results.status_code:
+            meters = results.json()
+            # tbd refine this once more data has been gathered
+            port = meters['secc']['port0']
+            self.add_field_value('charging', port['charging'])
+            self.add_field_value('ev_present', port['ev_present'])
+            metering = port['metering']
+            energy = metering['energy']['active_total']['actual']
+            self.add_field_value('total energy', energy)
+            power = metering['power']['active_total']['actual']
+            self.add_field_value('total power', power)
+
+
 class CheckRemote(Check):
     """Delegate checks to a remote API server"""
 
@@ -1641,5 +1668,6 @@ CHECKS = {
     'system': CheckSystem,
     'kostal': CheckKostalSCB,
     'remote': CheckRemote,
-    'wem_portal': CheckWemPortal
+    'wem_portal': CheckWemPortal,
+    'wallbox_echarge_cpu2': CheckWallBoxEChargeCpu2
 }
