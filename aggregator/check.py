@@ -1471,7 +1471,9 @@ class CheckWemPortal(Check):
                     if val == 'Label ist null':
                         val = value['NumericValue']
                     self.add_field_value(name, val, unit, device)
-                except KeyError:
+                except KeyError as e:
+                    self.logger.debug(
+                        f"Failed to get {value.get('ParameterID')}: {e}")
                     continue
 
     def fetch_status(self):
@@ -1605,7 +1607,7 @@ class CheckWallBoxEChargeCpu2(Check):
 
     def __init__(self, config: dict):
         """Constructor"""
-        super().__init__(name='wallbox_echarge_cpu2', config=config)
+        super().__init__(name='echarge_cpu2', config=config)
         self.ip = config['ip']
 
     def on_run(self):
@@ -1614,12 +1616,12 @@ class CheckWallBoxEChargeCpu2(Check):
             meters = results.json()
             # tbd refine this once more data has been gathered
             port = meters['secc']['port0']
-            self.add_field_value('charging', port['charging'])
-            self.add_field_value('ev_present', port['ev_present'])
+            self.add_field_value('charging', int(port['charging']))
+            self.add_field_value('ev_present', int(port['ev_present']))
             metering = port['metering']
-            energy = metering['energy']['active_total']['actual']
+            energy = float(metering['energy']['active_total']['actual'])
             self.add_field_value('total energy', energy)
-            power = metering['power']['active_total']['actual']
+            power = float(metering['power']['active_total']['actual'])
             self.add_field_value('total power', power)
 
 
