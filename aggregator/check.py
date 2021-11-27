@@ -1539,7 +1539,7 @@ class CheckWemPortal(Check):
                 "GroupType": group['GroupType'],
                 "ModuleIndex": self.stat_module_index,
                 # 7=MOD_WE
-                "ModuleType": 1,
+                "ModuleType": 7,
                 # 1=DAYS, 2=MONTHS, 3=YEARS
                 "Type": 3
             }
