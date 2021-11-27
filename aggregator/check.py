@@ -1586,9 +1586,14 @@ class CheckWemPortal(Check):
         if self.device_id is None or self.used_modules is None:
             self.fetch_devices()
             self.fetch_available_params()
+        # always fetch data
         self.fetch_data()
-        self.fetch_status()
-        self.fetch_stats()
+        # only fetch status and stats once per hour
+        current_hour = datetime.datetime.now().hour
+        if current_hour != self.status_timestamp:
+            self.fetch_status()
+            self.fetch_stats()
+            self.status_timestamp = current_hour
 
 
 class CheckRemote(Check):
