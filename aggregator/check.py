@@ -1300,6 +1300,8 @@ class CheckWemPortal(Check):
         self.failure = None
         # hardcoded to 0 for now, if devicetype was 1 this would depend on the index of the actual module
         self.stat_module_index = 0
+        self.status_timestamp = -1
+        self.groups = None
 
     def login(self):
         request = {
@@ -1332,6 +1334,7 @@ class CheckWemPortal(Check):
         self.logger.debug("Fetching api device data")
         self.all_modules = []
         self.used_modules = []
+        self.groups = None
         response = self.session.get(
             "https://www.wemportal.com/app/device/Read"
         )
@@ -1500,27 +1503,29 @@ class CheckWemPortal(Check):
             self.logger.debug("Stats are not supported for the device type")
             return
 
-        request = {
-            "DeviceID": self.device_id,
-        }
         headers = copy.deepcopy(CheckWemPortal.HEADERS)
         headers["Content-Type"] = "application/json"
-        response = self.session.post(
-            "https://www.wemportal.com/app/Statistics/Refresh",
-            headers=headers,
-            data=json.dumps(request),
-        )
-        if response.status_code == 401:
-            self.session = None
-            return
-        elif response.status_code != 200:
-            self.logger.warning(
-                f"{response.status_code} failed to refresh stats: {response.content}")
-            # ignore refresh
-        else:
-            data = response.json()
-            self.stats_job_id = data['JobID']
-            self.groups = data['GroupTypeDescriptions']
+
+        if not self.groups:
+            request = {
+                "DeviceID": self.device_id,
+            }
+            response = self.session.post(
+                "https://www.wemportal.com/app/Statistics/Refresh",
+                headers=headers,
+                data=json.dumps(request),
+            )
+            if response.status_code == 401:
+                self.session = None
+                return
+            elif response.status_code != 200:
+                self.logger.warning(
+                    f"{response.status_code} failed to refresh stats: {response.content}")
+                return
+            else:
+                data = response.json()
+                self.stats_job_id = data['JobID']
+                self.groups = data['GroupTypeDescriptions']
 
         for group in self.groups:
             g_desc = group['Description']
@@ -1533,8 +1538,8 @@ class CheckWemPortal(Check):
                 "JobID": self.stats_job_id,
                 "GroupType": group['GroupType'],
                 "ModuleIndex": self.stat_module_index,
-                # 7=MOD_WE 9=MOD_GERAET
-                "ModuleType": 7,
+                # 7=MOD_WE
+                "ModuleType": 1,
                 # 1=DAYS, 2=MONTHS, 3=YEARS
                 "Type": 3
             }
@@ -1548,6 +1553,7 @@ class CheckWemPortal(Check):
                 self.session = None
                 return
             elif response.status_code != 200:
+                self.groups = None
                 self.logger.error(
                     f"{response.status_code} failed to fetch stats for group '{g_desc}': {response.content}")
                 continue
