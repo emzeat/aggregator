@@ -1316,7 +1316,7 @@ class CheckWemPortal(Check):
         self.session.headers.update(CheckWemPortal.HEADERS)
         response = self.session.post(
             "https://www.wemportal.com/app/Account/Login",
-            data=request,
+            data=request, timeout=30
         )
         if response.status_code != 200:
             self.logger.error(
@@ -1336,7 +1336,7 @@ class CheckWemPortal(Check):
         self.used_modules = []
         self.groups = None
         response = self.session.get(
-            "https://www.wemportal.com/app/device/Read"
+            "https://www.wemportal.com/app/device/Read", timeout=30
         )
         # If session expired
         if response.status_code == 401:
@@ -1371,7 +1371,7 @@ class CheckWemPortal(Check):
             }
             response = self.session.post(
                 "https://www.wemportal.com/app/EventType/Read",
-                data=request,
+                data=request, timeout=30
             )
             # If session expired
             if response.status_code == 401:
@@ -1422,6 +1422,7 @@ class CheckWemPortal(Check):
             "https://www.wemportal.com/app/DataAccess/Refresh",
             headers=headers,
             data=json.dumps(request),
+            timeout=30
         )
         if response.status_code == 401:
             self.session = None
@@ -1436,6 +1437,7 @@ class CheckWemPortal(Check):
 
             headers=headers,
             data=json.dumps(request),
+            timeout=30
         )
         if response.status_code == 401:
             self.session = None
@@ -1484,6 +1486,7 @@ class CheckWemPortal(Check):
         response = self.session.post(
             "https://www.wemportal.com/app/DeviceStatus/Read",
             data=request,
+            timeout=30
         )
         # If session expired
         if response.status_code == 401:
@@ -1516,6 +1519,7 @@ class CheckWemPortal(Check):
                 "https://www.wemportal.com/app/Statistics/Refresh",
                 headers=headers,
                 data=json.dumps(request),
+                timeout=30
             )
             if response.status_code == 401:
                 self.session = None
@@ -1550,6 +1554,7 @@ class CheckWemPortal(Check):
 
                 headers=headers,
                 data=json.dumps(request),
+                timeout=30
             )
             if response.status_code == 401:
                 self.session = None
@@ -1611,7 +1616,8 @@ class CheckWallBoxEChargeCpu2(Check):
         self.ip = config['ip']
 
     def on_run(self):
-        results = requests.get(f'http://{self.ip}/api')
+        results = requests.get(
+            f'http://{self.ip}/api', timeout=CHECK_TIMEOUT_S)
         if 200 == results.status_code:
             meters = results.json()
             # tbd refine this once more data has been gathered
