@@ -1281,7 +1281,10 @@ class CheckWemPortal(Check):
     CONFIG = merge_dict(Check.CONFIG, {
         'username': 'str: Usename used for authentication',
         'password': 'str: Password used for authentication',
-        'device': 'str: Name of the device as configured in the WEM Portal'
+        'device': 'str: Name of the device as configured in the WEM Portal',
+        'fetch_data': 'bool: Controls fetching of current parameter data. Default: True',
+        'fetch_status': 'bool: Controls fetching of device status. Default: False',
+        'fetch_stats': 'bool: Controls fetching of device statistics. Default: False',
     })
 
     def __init__(self, config: dict):
@@ -1291,6 +1294,10 @@ class CheckWemPortal(Check):
         self.username = config['username']
         self.password = config['password']
         self.device_name = config['device']
+        self.do_fetch_data = config.get('fetch_data', True)
+        self.do_fetch_status = config.get('fetch_status', False)
+        self.do_fetch_stats = config.get('fetch_stats', False)
+
         self.device_id = None
         self.device = None
         self.session = None
@@ -1593,14 +1600,17 @@ class CheckWemPortal(Check):
         if self.device_id is None or self.used_modules is None:
             self.fetch_devices()
             self.fetch_available_params()
-        # always fetch data
-        self.fetch_data()
-        # only fetch status and stats once per hour
+        if self.do_fetch_data:
+            self.fetch_data()
+        # only fetch status and stats at most once per hour
         current_hour = datetime.datetime.now().hour
         if current_hour != self.status_timestamp:
-            self.fetch_status()
-            self.fetch_stats()
-            self.status_timestamp = current_hour
+            if self.do_fetch_status:
+                self.fetch_status()
+            if self.do_fetch_stats:
+                self.fetch_stats()
+            if self.do_fetch_status or self.do_fetch_stats:
+                self.status_timestamp = current_hour
 
 
 class CheckWallBoxEChargeCpu2(Check):
