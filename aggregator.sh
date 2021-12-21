@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # aggregator.sh
 #
@@ -26,13 +26,13 @@ base_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd $base_dir
 
 venv=$base_dir/.venv
-if [ -d $venv ]; then
+if [ -f $venv/bin/activate ]; then
     echo "Using virtualenv at $venv"
-    source $venv/bin/activate
+    source $venv/bin/activate || exit 1
 else
     echo "Creating virtualenv at $venv"
     python3 -m venv $venv
-    source $venv/bin/activate
+    source $venv/bin/activate || exit 1
 fi
 
 # macOS has md5, Linux is using md5sum
@@ -45,7 +45,9 @@ fi
 md5_new=$($md5 requirements.txt aggregator.sh)
 md5_inst=$(cat $venv/requirements.log 2> /dev/null)
 if [ ! "$md5_new" = "$md5_inst" ]; then
-    echo "Need to update dependencies"
+    echo "Need to upgrade dependencies"
+    python3 -m pip install --upgrade pip || exit 1
+
     if python3 -m pip --disable-pip-version-check install -r requirements.txt; then
         echo "$md5_new" > $venv/requirements.log
     else
