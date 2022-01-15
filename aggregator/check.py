@@ -1640,6 +1640,33 @@ class CheckWallBoxEChargeCpu2(Check):
             power = float(metering['power']['active_total']['actual'])
             self.add_field_value('total power', power)
 
+class CheckShellyPlugS(Check):
+    """Polling of data from the Shelly Plug S"""
+
+    CONFIG = merge_dict(Check.CONFIG, {
+        'ip': 'str: IP Address of the Shelly Plug'
+    })
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='shelly_plug_s', config=config)
+        self.ip = config['ip']
+
+    def on_run(self):
+        results = requests.get(
+            f'http://{self.ip}/status', timeout=CHECK_TIMEOUT_S)
+        if 200 == results.status_code:
+            status = results.json()
+            self.add_field_value('temperature', status['temperature'], )
+            self.add_field_value('enabled', int(status['relays'][0]['ison']), )
+            # power in Watts
+            self.add_field_value('power', status['meters'][0]['power'], unit='W')
+            # power is in Watts-minute
+            # https://www.shelly-support.eu/forum/index.php?thread/487-gel%C3%B6st-mqtt-relay-0-energy-wert/
+            self.add_field_value('total', status['meters'][0]['total'] / 60.0 / 1000.0, unit='kWh')
+        else:
+            self.logger.error(f"Failed to query plug: {results.status_code} - {results.text}")
+
 
 class CheckRemote(Check):
     """Delegate checks to a remote API server"""
@@ -1687,5 +1714,6 @@ CHECKS = {
     'kostal': CheckKostalSCB,
     'remote': CheckRemote,
     'wem_portal': CheckWemPortal,
-    'wallbox_echarge_cpu2': CheckWallBoxEChargeCpu2
+    'wallbox_echarge_cpu2': CheckWallBoxEChargeCpu2,
+    'shelly_plug_s': CheckShellyPlugS,
 }
