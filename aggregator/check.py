@@ -224,6 +224,9 @@ class CheckFritzBox(Check):
         self.username = config['username']
         self.password = config['password']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
+        self.connection = None
+
+    def _connect(self):
         from fritzconnection import FritzConnection
         self.connection = FritzConnection(address=self.host, user=self.username,
                                           password=self.password, timeout=self.timeout)
@@ -251,6 +254,9 @@ class CheckFritzBox(Check):
         self.add_field_value('clients', active_clients, device=band)
 
     def on_run(self):
+        if self.connection is None:
+            self._connect()
+
         from fritzconnection.lib.fritzstatus import FritzStatus
         status = FritzStatus(fc=self.connection)
         internet_device = 'wan'
