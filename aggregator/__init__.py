@@ -1,7 +1,7 @@
 """
  __init__.py
 
- Copyright (c) 2021 Marius Zwicker
+ Copyright (c) 2021 - 2022 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: GPL-2.0-or-later
@@ -123,8 +123,7 @@ def main():
         notifier.send_message(subject, contents)
         sys.exit(0)
 
-    engine = Executor(interval=datetime.timedelta(
-        seconds=config.get('interval', 30)))
+    engine = Executor(default_interval=config.get('default_interval', 30))
     for entry in config.get('checks', []):
         try:
             entry_type = entry['type']

@@ -1,7 +1,7 @@
 """
  executor.py
 
- Copyright (c) 2021 Marius Zwicker
+ Copyright (c) 2021 - 2022 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: GPL-2.0-or-later
@@ -32,11 +32,11 @@ from .output import Output
 class Executor:
     """Collection of checks"""
 
-    def __init__(self, interval=datetime.timedelta(seconds=15)):
+    def __init__(self, interval=None, default_interval=30):
         """Constructor"""
         self.outputs = []
         self.checks = []
-        self.interval = interval
+        self.default_interval = default_interval
         self.logger = logging.getLogger("aggregator.executor")
 
     def add_check(self, check: Check):
@@ -51,8 +51,10 @@ class Executor:
         self.logger.debug("Running checks")
         results = []
         for c in self.checks:
+            now = datetime.datetime.utcnow()
             try:
-                results += c.run()
+                if c.next_run_in(now, self.default_interval) <= 0:
+                    results += c.run(now)
             except Exception as e:
                 c.logger.fatal(f'Run failure: {e}')
                 if c.logger.isEnabledFor(logging.DEBUG):
@@ -65,15 +67,23 @@ class Executor:
                 if o.logger.isEnabledFor(logging.DEBUG):
                     raise
 
+    def next_cycle_in(self):
+        now = datetime.datetime.utcnow()
+        next = None
+        for c in self.checks:
+            c_next = c.next_run_in(now, self.default_interval)
+            if next is None:
+                next = c_next
+            else:
+                next = min(next, c_next)
+        return next
+
     def run(self):
-        self.logger.info(f"Will run checks every {self.interval}")
+        self.logger.info(f"Beginning to run checks")
         while True:
-            begin = datetime.datetime.now()
             self.cycle()
-            end = datetime.datetime.now()
-            remaining = self.interval - (end - begin)
-            remaining_s = remaining.total_seconds()
+            remaining_s = self.next_cycle_in()
             self.logger.info(
-                f"{remaining} ({remaining_s}s) until next iteration")
+                f"{remaining_s:.3f}s until next iteration")
             if remaining_s > 0:
                 time.sleep(remaining_s)

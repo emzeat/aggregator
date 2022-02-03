@@ -108,14 +108,14 @@ class Check:
         self.results = []
         self.field_values = defaultdict(list)
 
-    def __init__(self, name: str, config: dict, default_interval: int = None):
+    def __init__(self, name: str, config: dict, minimum_interval: int = None):
         """Constructs a new Check instance
 
         Implementations may check one or more values on host
 
         :param name: The name of the check implementation
         :param config: The check configuration
-        :param default_interval: The default interval at which to perform the check
+        :param minimum_interval: The minimum interval at which to perform the check
         """
         import logging
         self.logger = logging.getLogger(f"aggregator.check.{name}")
@@ -124,7 +124,11 @@ class Check:
         self.logger.info(f"New instance monitoring '{self.host}'")
         self.logger = logging.getLogger(
             f"aggregator.check.{name}({self.host})")
-        self.interval = config.get('interval', default_interval)
+        self.interval = config.get('interval', None)
+        if self.interval is None:
+            self.interval = minimum_interval
+        elif minimum_interval is not None:
+            self.interval = max(self.interval, minimum_interval)
         self.ignore_failure = config.get('ignore_failure', False)
         self.last_state = {}
         self.status = {}
@@ -169,23 +173,27 @@ class Check:
             status = self.status.get(device, Check.STATUS_OK)
             self.status[device] = min(Check.STATUS_FAILED, status + 1)
 
-    def run(self):
+    def next_run_in(self, now, default_interval):
+        """Returns the number of seconds until the next run"""
+        effective_interval = default_interval
+        if self.interval:
+            effective_interval = self.interval
+        last = self.last_state.get(LAST_RUN, None)
+        if last:
+            due = last + datetime.timedelta(seconds=effective_interval)
+            if due > now:
+                self.logger.debug(f'Next check due in {due - now}')
+                return (due - now).total_seconds()
+            else:
+                self.logger.debug(f'Run check - expired {now - due} ago')
+                return 0
+        else:
+            self.logger.debug('Run check - never executed before')
+            return 0
+
+    def run(self, now):
         """Executes the checks implemented by this class"""
         self._reset()
-        now = datetime.datetime.utcnow()
-        if self.interval:
-            last = self.last_state.get(LAST_RUN, None)
-            if last:
-                due = last + datetime.timedelta(seconds=self.interval)
-                if due > now:
-                    self.logger.debug(f'Next check due in {due - now}')
-                    return self.results
-                else:
-                    self.logger.debug(f'Run check - expired {now - due} ago')
-            else:
-                self.logger.debug('Run check - never executed before')
-        else:
-            self.logger.debug('Run check - no interval configured')
         self.on_run()
         self.logger.debug(
             f'Check completed in {(datetime.datetime.utcnow() - now)}')
@@ -1296,7 +1304,8 @@ class CheckWemPortal(Check):
     def __init__(self, config: dict):
         """Constructor"""
         # see discussion on https://github.com/erikkastelec/hass-WEM-Portal/issues/9
-        super().__init__(name='wem_portal', config=config)
+        # we enforce a minimum interval of 5 minutes because access is so slow
+        super().__init__(name='wem_portal', config=config, minimum_interval=300)
         self.username = config['username']
         self.password = config['password']
         self.device_name = config['device']
