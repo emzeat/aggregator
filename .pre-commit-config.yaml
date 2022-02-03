@@ -18,7 +18,7 @@ repos:
     rev: v1.5.7
     hooks:
     -   id: autopep8
--   repo: https://github.com/emzeat/license-tools
-    rev: v2.0
+-   repo: https://github.com/emzeat/mz-lictools
+    rev: v2.2
     hooks:
     -   id: license-tools

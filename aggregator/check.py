@@ -1,7 +1,7 @@
 """
  check.py
 
- Copyright (c) 2021 Marius Zwicker
+ Copyright (c) 2021 - 2022 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: GPL-2.0-or-later
@@ -1646,6 +1646,7 @@ class CheckWallBoxEChargeCpu2(Check):
             power = float(metering['power']['active_total']['actual'])
             self.add_field_value('total power', power)
 
+
 class CheckShellyPlugS(Check):
     """Polling of data from the Shelly Plug S"""
 
@@ -1666,12 +1667,15 @@ class CheckShellyPlugS(Check):
             self.add_field_value('temperature', status['temperature'], )
             self.add_field_value('enabled', int(status['relays'][0]['ison']), )
             # power in Watts
-            self.add_field_value('power', status['meters'][0]['power'], unit='W')
+            self.add_field_value(
+                'power', status['meters'][0]['power'], unit='W')
             # power is in Watts-minute
             # https://www.shelly-support.eu/forum/index.php?thread/487-gel%C3%B6st-mqtt-relay-0-energy-wert/
-            self.add_field_value('total', status['meters'][0]['total'] / 60.0 / 1000.0, unit='kWh')
+            self.add_field_value(
+                'total', status['meters'][0]['total'] / 60.0 / 1000.0, unit='kWh')
         else:
-            self.logger.error(f"Failed to query plug: {results.status_code} - {results.text}")
+            self.logger.error(
+                f"Failed to query plug: {results.status_code} - {results.text}")
 
 
 class CheckRemote(Check):
