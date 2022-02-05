@@ -1,7 +1,7 @@
 """
  output.py
 
- Copyright (c) 2021 Marius Zwicker
+ Copyright (c) 2021 - 2022 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: GPL-2.0-or-later
@@ -22,6 +22,7 @@
 """
 
 import abc
+from copy import deepcopy
 import json
 import logging
 
@@ -90,12 +91,12 @@ class OutputInfluxDb(Output):
             if Check.Result.DEVICE in result:
                 point = point.tag("device", result[Check.Result.DEVICE])
             for field in result[Check.Result.FIELDS]:
-                point = point.field(
+                field_point = deepcopy(point)
+                field_point.field(
                     field[Check.Field.NAME], field[Check.Field.VALUE])
                 if Check.Field.UNIT in field:
-                    point = point.field(
-                        f"{field[Check.Field.NAME]}_unit", field[Check.Field.UNIT])
-            points.append(point)
+                    field_point.tag("unit", field[Check.Field.UNIT])
+                points.append(field_point)
         self.write_api.write(self.bucket, self.org, points)
 
 
