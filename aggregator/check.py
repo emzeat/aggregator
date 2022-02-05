@@ -1200,19 +1200,19 @@ class CheckKostalSCB(Check):
             'device': 'co2 savings'
         },
         "Statistic:EnergyHome:Total": {
-            'unit': 'kWh',
+            'unit': 'Wh',
             'device': 'Verbrauch Haus Gesamt'
         },
         "Statistic:EnergyHomePv:Total": {
-            'unit': 'kWh',
+            'unit': 'Wh',
             'device': 'Verbrauch Haus PV'
         },
         "Statistic:EnergyHomeGrid:Total": {
-            'unit': 'kWh',
+            'unit': 'Wh',
             'device': 'Verbrauch Haus Netz'
         },
         "Statistic:EnergyHomeBat:Total": {
-            'unit': 'kWh',
+            'unit': 'Wh',
             'device': 'Verbrauch Haus Batterie'
         },
         "Statistic:Autarky:Total": {
