@@ -414,7 +414,10 @@ class CheckPihole(CheckDns):
                 status = r.json()
 
                 def status_value(name):
-                    return int(status.get(name, "0").replace(',', ''))
+                    val = status.get(name, "0")
+                    if isinstance(val, str):
+                        val = val.replace(',', '')
+                    return int(val)
 
                 self.add_field_value(
                     'domains_being_blocked', status_value('domains_being_blocked'))
