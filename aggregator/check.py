@@ -194,10 +194,12 @@ class Check:
     def run(self, now):
         """Executes the checks implemented by this class"""
         self._reset()
-        self.on_run()
-        self.logger.debug(
-            f'Check completed in {(datetime.datetime.utcnow() - now)}')
-        self.last_state[LAST_RUN] = now
+        try:
+            self.on_run()
+            self.logger.debug(
+                f'Check completed in {(datetime.datetime.utcnow() - now)}')
+        finally:
+            self.last_state[LAST_RUN] = now
         for device, values in self.field_values.items():
             self.results.append({
                 Check.Result.NAME: self.name,
