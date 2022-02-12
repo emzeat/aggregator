@@ -8,6 +8,7 @@ kostalplenticore
 netifaces
 nut2
 paramiko
+prometheus_client
 psutil
 python-dotenv
 requests

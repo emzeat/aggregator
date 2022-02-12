@@ -97,6 +97,7 @@ class Check:
         NAME = 'field'  # the name of the measured field
         VALUE = 'value'  # the value measured for the field
         UNIT = 'unit'  # the unit in which value is provided
+        LABELS = 'labels'  # additional labels to be included
         MIN = 'min'  # the value below which the measurement failed
         MAX = 'max'  # the value above which the measurement failed
 
@@ -146,7 +147,7 @@ class Check:
         """
         pass
 
-    def add_field_value(self, field: str, value: float, unit: str = None, device: str = DEFAULT_DEVICE):
+    def add_field_value(self, field: str, value: float, unit: str = None, device: str = DEFAULT_DEVICE, labels=None):
         """Add a field value for a check
 
         :param field: The field for which the check produced a result
@@ -158,8 +159,10 @@ class Check:
             Check.Field.NAME: field,
             Check.Field.VALUE: value,
         }
+        labels = labels or {}
         if unit:
-            r[Check.Field.UNIT] = unit
+            labels[Check.Field.UNIT] = unit
+        r[Check.Field.LABELS] = labels
         self.field_values[device].append(r)
 
     def set_pass(self, device: str = DEFAULT_DEVICE):
@@ -1710,6 +1713,39 @@ class CheckShellyPM(Check):
                 f"Failed to query plug: {results.status_code} - {results.text}")
 
 
+class CheckPrometheus(Check):
+    """
+    Pulls Metrics from a Prometheus compatible endpoint
+    """
+
+    CONFIG = merge_dict(Check.CONFIG, {
+        'endpoint': 'str: Metrics endpoint to be consumed',
+        'metrics': 'str: List of metrics to be used. Omit to use all available'
+    })
+
+    def __init__(self, config: dict):
+        """Constructor"""
+        super().__init__(name='prometheus', config=config)
+        self.endpoint = config['endpoint']
+        self.metrics = config.get('metrics', None)
+        if self.metrics:
+            self.metrics = set(self.metrics)
+        from prometheus_client.parser import text_string_to_metric_families
+        self.parser = text_string_to_metric_families
+
+    def on_run(self):
+        results = requests.get(self.endpoint, timeout=CHECK_TIMEOUT_S)
+        if 200 == results.status_code:
+            for family in self.parser(results.text):
+                for sample in family.samples:
+                    if self.metrics is None or sample.name in self.metrics:
+                        self.add_field_value(
+                            sample.name, sample.value, unit=family.unit, labels=sample.labels)
+        else:
+            self.logger.error(
+                f"Failed to get metrics: {results.status_code} - {results.text}")
+
+
 class CheckRemote(Check):
     """Delegate checks to a remote API server"""
 
@@ -1758,5 +1794,6 @@ CHECKS = {
     'wem_portal': CheckWemPortal,
     'wallbox_echarge_cpu2': CheckWallBoxEChargeCpu2,
     'shelly_plug_s': CheckShellyPM,
-    'shelly_pm': CheckShellyPM
+    'shelly_pm': CheckShellyPM,
+    'prometheus': CheckPrometheus
 }

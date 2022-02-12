@@ -94,8 +94,8 @@ class OutputInfluxDb(Output):
                 field_point = deepcopy(point)
                 field_point.field(
                     field[Check.Field.NAME], field[Check.Field.VALUE])
-                if Check.Field.UNIT in field:
-                    field_point.tag("unit", field[Check.Field.UNIT])
+                for label, value in field.get(Check.Field.LABELS, {}).items():
+                    field_point.tag(label, value)
                 points.append(field_point)
         self.write_api.write(self.bucket, self.org, points)
 
