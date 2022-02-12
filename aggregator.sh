@@ -2,7 +2,7 @@
 #
 # aggregator.sh
 #
-# Copyright (c) 2021 Marius Zwicker
+# Copyright (c) 2021 - 2022 Marius Zwicker
 # All rights reserved.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -55,4 +55,16 @@ if [ ! "$md5_new" = "$md5_inst" ]; then
     fi
 fi
 
-python3 -m aggregator "$@"
+if [ $1 == "freeze" ]; then
+    for line in $(python3 -m pip freeze -r requirements.txt); do
+        if echo $line | grep -sq "##"; then
+            # break when we hit the comment about pip adding recursive dependencies
+            break
+        else
+            echo $line >> requirements.txt.filtered
+        fi
+    done
+    mv -f requirements.txt.filtered requirements.txt
+else
+    python3 -m aggregator "$@"
+fi
