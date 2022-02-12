@@ -1661,32 +1661,50 @@ class CheckWallBoxEChargeCpu2(Check):
             self.add_field_value('total power', power)
 
 
-class CheckShellyPlugS(Check):
-    """Polling of data from the Shelly Plug S"""
+class CheckShellyPM(Check):
+    """
+    Polling of data from Shelly devices supporting metering
+    """
 
     CONFIG = merge_dict(Check.CONFIG, {
-        'ip': 'str: IP Address of the Shelly Plug'
+        'ip': 'str: IP Address of the Shelly Plug (if different from host)',
+        'channels': 'str: List of channel names'
     })
 
     def __init__(self, config: dict):
         """Constructor"""
-        super().__init__(name='shelly_plug_s', config=config)
-        self.ip = config['ip']
+        super().__init__(name='shelly_pm', config=config)
+        self.ip = config.get('ip', config['host'])
+        self.channels = config.get('channels', [])
 
     def on_run(self):
         results = requests.get(
             f'http://{self.ip}/status', timeout=CHECK_TIMEOUT_S)
         if 200 == results.status_code:
             status = results.json()
-            self.add_field_value('temperature', status['temperature'], )
-            self.add_field_value('enabled', int(status['relays'][0]['ison']), )
-            # power in Watts
-            self.add_field_value(
-                'power', status['meters'][0]['power'], unit='W')
-            # power is in Watts-minute
-            # https://www.shelly-support.eu/forum/index.php?thread/487-gel%C3%B6st-mqtt-relay-0-energy-wert/
-            self.add_field_value(
-                'total', status['meters'][0]['total'] / 60.0 / 1000.0, unit='kWh')
+            temperature = status.get('temperature')
+            if temperature:
+                self.add_field_value('temperature', float(
+                    temperature), unit='celcius')
+            for index, relay in enumerate(status.get('relays', [])):
+                try:
+                    device = self.channels[index]
+                except IndexError:
+                    device = f"channel{index}"
+                self.add_field_value('enabled', int(
+                    relay['ison']), device=device)
+            for index, meter in enumerate(status.get('meters')):
+                try:
+                    device = self.channels[index]
+                except IndexError:
+                    device = f"channel{index}"
+                # power in Watts
+                self.add_field_value(
+                    'power', float(meter.get('power', -1)), unit='W', device=device)
+                # power is in Watts-minute
+                # https://www.shelly-support.eu/forum/index.php?thread/487-gel%C3%B6st-mqtt-relay-0-energy-wert/
+                self.add_field_value(
+                    'total', float(meter.get('total', -1)) / 60.0 / 1000.0, unit='kWh', device=device)
         else:
             self.logger.error(
                 f"Failed to query plug: {results.status_code} - {results.text}")
@@ -1739,5 +1757,6 @@ CHECKS = {
     'remote': CheckRemote,
     'wem_portal': CheckWemPortal,
     'wallbox_echarge_cpu2': CheckWallBoxEChargeCpu2,
-    'shelly_plug_s': CheckShellyPlugS,
+    'shelly_plug_s': CheckShellyPM,
+    'shelly_pm': CheckShellyPM
 }
