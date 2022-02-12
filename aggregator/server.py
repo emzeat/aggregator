@@ -1,7 +1,7 @@
 """
  server.py
 
- Copyright (c) 2021 Marius Zwicker
+ Copyright (c) 2021 - 2022 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: GPL-2.0-or-later
@@ -24,6 +24,7 @@
 import logging
 
 from flask import Flask, request
+import datetime
 
 
 class Server:
@@ -39,6 +40,7 @@ class Server:
         def run_checks():
             results = []
             requested_checks = request.get_json()
+            now = datetime.datetime.utcnow()
             for entry in requested_checks:
                 try:
                     entry_type = entry['type']
@@ -49,7 +51,7 @@ class Server:
                 try:
                     if entry_type in self.checks:
                         check = self.checks[entry_type](entry)
-                        results += check.run()
+                        results += check.run(now)
                     else:
                         error = f"Unknown check '{entry_type}'"
                         logging.fatal(error)
