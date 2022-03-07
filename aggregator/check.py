@@ -1755,7 +1755,12 @@ class CheckRemote(Check):
         self.checks = config['checks']
 
     def on_run(self):
-        results = requests.post(self.host, json=self.checks, verify=False)
+        try:
+            results = requests.post(self.host, json=self.checks, verify=False)
+        except requests.RequestException as e:
+            self.logger.error(f'Request failed: {e}')
+            self.set_fail()
+            return
         if 200 == results.status_code:
             self.results += results.json().get('results', [])
             for result in self.results:
@@ -1765,10 +1770,10 @@ class CheckRemote(Check):
                     time = datetime.datetime.strptime(
                         time, "%a, %d %b %Y %H:%M:%S %Z")
                 result[Check.Result.TIME] = time
-            pass
+            self.set_pass()
         else:
-            self.logger.error(f'Remote execution failed: {results.json()}')
-            raise RuntimeError(results.status_code)
+            self.logger.error(f'Execution failed: {results.text()}')
+            self.set_fail()
 
 
 CHECKS = {
