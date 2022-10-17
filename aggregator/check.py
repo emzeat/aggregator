@@ -1378,6 +1378,8 @@ class CheckWemPortal(Check):
 
         data = response.json()
         for device in data.get('Devices', []):
+            self.logger.debug(
+                f"Discovered device '{device.get('Name')}' - want {self.device_name}")
             if device.get('Name') == self.device_name:
                 self.device = device
                 self.device_id = device.get("ID", None)
@@ -1412,6 +1414,8 @@ class CheckWemPortal(Check):
                 continue
 
             data = response.json()
+            self.logger.debug(
+                f"Discovered module '{module.get('Name')}' on device '{self.device_id}'")
             # each param is like
             # {'ParameterID': 'Außentemperatur', 'Name': 'Außentemperatur', 'DataType': -1, 'MinValue': 0.0, 'MaxValue': 0.0, 'DefaultValue': '', 'IsReadable': True, 'IsWriteable': False, 'EnumValues': None}
             params = data.get('Parameters', None)
