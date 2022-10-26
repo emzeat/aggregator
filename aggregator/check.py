@@ -1012,6 +1012,7 @@ class CheckDockerV2(Check):
         self.docker_client = docker.DockerClient
         self.docker_from_env = docker.from_env
         self._stale_container_list = True
+        self._use_cgroupv1 = True
         self._fetch_containers()
         self.cpu_count = psutil.cpu_count()
 
@@ -1031,6 +1032,7 @@ class CheckDockerV2(Check):
         self.containers = [Container(c)
                            for c in client.containers.list(sparse=False)]
         self._stale_container_list = False
+        self._use_cgroupv1 = os.path.exists("/sys/fs/cgroup/cpuacct/docker")
 
     def read_sysfs_node(self, path, key_index=0):
         """Returns a dict with values of the sysfs node at path"""
@@ -1065,45 +1067,78 @@ class CheckDockerV2(Check):
         self._stale_container_list = True
         return None
 
+    def read_v1(self, container, name):
+        # see https://crate.io/a/analyzing-docker-container-performance-native-tools/
+        sysfs_memory = self.read_sysfs_node(
+            f"/sys/fs/cgroup/memory/docker/{container.id}/memory.stat")
+        if sysfs_memory:
+            self.add_field_value('memory', int(
+                sysfs_memory['total_rss']), 'bytes', device=name)
+        sysfs_cpu = self.read_sysfs_node(
+            f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
+        if sysfs_cpu:
+            userhz_2_s = 1.0 / 100.0
+            cpu_total_userhz = float(
+                sysfs_cpu['user']) + float(sysfs_cpu['system'])
+            self.add_field_value(
+                'cpu', cpu_total_userhz * userhz_2_s / self.cpu_count, 'seconds', device=name)
+        sysfs_io_bytes = self.read_sysfs_node(
+            f"/sys/fs/cgroup/blkio/docker/{container.id}/blkio.throttle.io_service_bytes", key_index=1)
+        if sysfs_io_bytes:
+            self.add_field_value('read', float(
+                sysfs_io_bytes['Read']), 'bytes', device=name)
+            self.add_field_value('written', float(
+                sysfs_io_bytes['Write']), 'bytes', device=name)
+        sysfs_tasks = self.read_sysfs_node(
+            f"/sys/fs/cgroup/devices/docker/{container.id}/tasks")
+        if sysfs_tasks:
+            sysfs_pid = list(sysfs_tasks.keys())[0]
+            proc_traffic = self.read_net_dev_node(sysfs_pid)
+            if proc_traffic:
+                recv = 0
+                sent = 0
+                for iface, values in proc_traffic.items():
+                    recv += int(values[0])
+                    sent += int(values[1])
+                self.add_field_value('recv', recv, 'bytes', device=name)
+                self.add_field_value('sent', sent, 'bytes', device=name)
+
+    def read_v2(self, container, name):
+        # see https://facebookmicrosites.github.io/cgroup2/docs/memory-controller.html
+        sysfs_memory = self.read_sysfs_node(
+            f"/sys/fs/cgroup/system.slice/docker-{container.id}.scope/memory.current")
+        if sysfs_memory:
+            self.add_field_value('memory', int(
+                list(sysfs_memory.keys())[0]), 'bytes', device=name)
+        sysfs_cpu = self.read_sysfs_node(
+            f"/sys/fs/cgroup/system.slice/docker-{container.id}.scope/cpu.stat")
+        if sysfs_cpu:
+            cpu_total_usec = float(sysfs_cpu['usage_usec'])
+            self.add_field_value(
+                'cpu', cpu_total_usec * 1000 * 1000, 'seconds', device=name)
+        sysfs_tasks = self.read_sysfs_node(
+            f"/sys/fs/cgroup/system.slice/docker-{container.id}.scope/cgroup.procs")
+        if sysfs_tasks:
+            sysfs_pid = list(sysfs_tasks.keys())[0]
+            proc_traffic = self.read_net_dev_node(sysfs_pid)
+            if proc_traffic:
+                recv = 0
+                sent = 0
+                for iface, values in proc_traffic.items():
+                    recv += int(values[0])
+                    sent += int(values[1])
+                self.add_field_value('recv', recv, 'bytes', device=name)
+                self.add_field_value('sent', sent, 'bytes', device=name)
+
     def on_run(self):
         if self._stale_container_list:
             self._fetch_containers()
         for container in self.containers:
             name = f"container '{container.name}'"
-            # see https://crate.io/a/analyzing-docker-container-performance-native-tools/
-            sysfs_memory = self.read_sysfs_node(
-                f"/sys/fs/cgroup/memory/docker/{container.id}/memory.stat")
-            if sysfs_memory:
-                self.add_field_value('memory', int(
-                    sysfs_memory['total_rss']), 'bytes', device=name)
-            sysfs_cpu = self.read_sysfs_node(
-                f"/sys/fs/cgroup/cpuacct/docker/{container.id}/cpuacct.stat")
-            if sysfs_cpu:
-                userhz_2_s = 1.0 / 100.0
-                cpu_total_userhz = float(
-                    sysfs_cpu['user']) + float(sysfs_cpu['system'])
-                self.add_field_value(
-                    'cpu', cpu_total_userhz * userhz_2_s / self.cpu_count, 'seconds', device=name)
-            sysfs_io_bytes = self.read_sysfs_node(
-                f"/sys/fs/cgroup/blkio/docker/{container.id}/blkio.throttle.io_service_bytes", key_index=1)
-            if sysfs_io_bytes:
-                self.add_field_value('read', float(
-                    sysfs_io_bytes['Read']), 'bytes', device=name)
-                self.add_field_value('written', float(
-                    sysfs_io_bytes['Write']), 'bytes', device=name)
-            sysfs_tasks = self.read_sysfs_node(
-                f"/sys/fs/cgroup/devices/docker/{container.id}/tasks")
-            if sysfs_tasks:
-                sysfs_pid = list(sysfs_tasks.keys())[0]
-                proc_traffic = self.read_net_dev_node(sysfs_pid)
-                if proc_traffic:
-                    recv = 0
-                    sent = 0
-                    for iface, values in proc_traffic.items():
-                        recv += int(values[0])
-                        sent += int(values[1])
-                    self.add_field_value('recv', recv, 'bytes', device=name)
-                    self.add_field_value('sent', sent, 'bytes', device=name)
+            if self._use_cgroupv1:
+                self.read_v1(container, name)
+            else:
+                self.read_v2(container, name)
 
 
 class CheckAge(Check):
