@@ -703,10 +703,11 @@ class CheckDiskSpindown(Check):
             else:
                 self.add_field_value(field='standby', value=0, device=name)
         except subprocess.CalledProcessError as error:
-            if 2 == error.returncode:
+            if 2 == error.returncode and 'STANDBY mode' in error.output:
                 self.add_field_value(field='standby', value=1, device=name)
             else:
-                raise
+                self.logger.warning(
+                    f"Failed to get SMART status on {disk}:\n\n{error.output}")
 
     def on_run(self):
         for d in self.disks:
