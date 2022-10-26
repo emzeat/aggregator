@@ -1116,7 +1116,7 @@ class CheckDockerV2(Check):
         if sysfs_cpu:
             cpu_total_usec = float(sysfs_cpu['usage_usec'])
             self.add_field_value(
-                'cpu', cpu_total_usec * 1000 * 1000, 'seconds', device=name)
+                'cpu', cpu_total_usec / 1000.0 / 1000.0, 'seconds', device=name)
         sysfs_tasks = self.read_sysfs_node(
             f"/sys/fs/cgroup/system.slice/docker-{container.id}.scope/cgroup.procs")
         if sysfs_tasks:
