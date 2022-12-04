@@ -33,6 +33,7 @@ import os
 import platform
 
 import requests
+from requests.auth import HTTPBasicAuth
 import dns.rdatatype
 import psutil
 from collections import defaultdict
@@ -1710,7 +1711,9 @@ class CheckShellyPM(Check):
 
     CONFIG = merge_dict(Check.CONFIG, {
         'ip': 'str: IP Address of the Shelly Plug (if different from host)',
-        'channels': 'str: List of channel names'
+        'channels': 'str: List of channel names',
+        'user': 'str: Username to authenticate with',
+        'password': 'str: Password to authenticate with'
     })
 
     def __init__(self, config: dict):
@@ -1718,10 +1721,16 @@ class CheckShellyPM(Check):
         super().__init__(name='shelly_pm', config=config)
         self.ip = config.get('ip', config['host'])
         self.channels = config.get('channels', [])
+        user = config.get('user', None)
+        password = config.get('password', None)
+        if user and password:
+            self.auth = HTTPBasicAuth(username=user, password=password)
+        else:
+            self.auth = None
 
     def on_run(self):
         results = requests.get(
-            f'http://{self.ip}/status', timeout=CHECK_TIMEOUT_S)
+            f'http://{self.ip}/status', timeout=CHECK_TIMEOUT_S, auth=self.auth)
         if 200 == results.status_code:
             status = results.json()
             temperature = status.get('temperature')
