@@ -231,6 +231,7 @@ class CheckFritzBox(Check):
         'report_wifi': 'bool: Select to report wifi activity. Default: True',
         'report_wan': 'bool: Select to an active internet connection. Disable this for repeaters. Default: True',
         'timeout': f'seconds: Timeout after which a connection attempt is aborted. Default: {CHECK_TIMEOUT_S}',
+        'disable_5ghz': 'int: Select the hour after and before which 5ghz wifi will be automatically disabled if no clients active. Default: None'
     })
 
     def __init__(self, config: dict):
@@ -240,6 +241,7 @@ class CheckFritzBox(Check):
         self.password = config['password']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
         self.do_wifi = config.get('report_wifi', True)
+        self.disable_5ghz = config.get('disable_5ghz', None)
         self.do_wan = config.get('report_wan', True)
         self.connection = None
 
@@ -253,9 +255,10 @@ class CheckFritzBox(Check):
         try:
             status = self.connection.call_action(
                 f'WLANConfiguration{service.service}', 'GetInfo')
-            self.add_field_value('active', True if 'Up' ==
-                                 status['NewStatus'] else False, device=band)
+            active = True if 'Up' == status['NewStatus'] else False
+            self.add_field_value('active', active, device=band)
         except FritzServiceError:
+            active = False
             pass
         try:
             stats = self.connection.call_action(
@@ -269,6 +272,12 @@ class CheckFritzBox(Check):
         active_clients = len(
             [c for c in service.get_hosts_info() if c['status']])
         self.add_field_value('clients', active_clients, device=band)
+        if self.disable_5ghz and active and 0 == active_clients and '5ghz' in band:
+            hour = datetime.datetime.now().hour
+            if hour >= max(self.disable_5ghz) or hour <= min(self.disable_5ghz):
+                self.logger.info(
+                    f"Disabling {band} as {hour} in {self.disable_5ghz}")
+                service.disable()
 
     def report_wan(self):
         from fritzconnection.lib.fritzstatus import FritzStatus
