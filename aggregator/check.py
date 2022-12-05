@@ -228,6 +228,8 @@ class CheckFritzBox(Check):
     CONFIG = merge_dict(Check.CONFIG, {
         'username': 'str: Name of the Fritz!Box user to use for login',
         'password': 'str: Password of the Fritz!Box user to use for login',
+        'report_wifi': 'bool: Select to report wifi activity. Default: True',
+        'report_wan': 'bool: Select to an active internet connection. Disable this for repeaters. Default: True',
         'timeout': f'seconds: Timeout after which a connection attempt is aborted. Default: {CHECK_TIMEOUT_S}',
     })
 
@@ -237,6 +239,8 @@ class CheckFritzBox(Check):
         self.username = config['username']
         self.password = config['password']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
+        self.do_wifi = config.get('report_wifi', True)
+        self.do_wan = config.get('report_wan', True)
         self.connection = None
 
     def _connect(self):
@@ -266,10 +270,7 @@ class CheckFritzBox(Check):
             [c for c in service.get_hosts_info() if c['status']])
         self.add_field_value('clients', active_clients, device=band)
 
-    def on_run(self):
-        if self.connection is None:
-            self._connect()
-
+    def report_wan(self):
         from fritzconnection.lib.fritzstatus import FritzStatus
         status = FritzStatus(fc=self.connection)
         internet_device = 'wan'
@@ -293,13 +294,21 @@ class CheckFritzBox(Check):
                              unit='bytes', device=internet_device)
         self.add_field_value('uptime', status.uptime, unit='seconds')
 
-        from fritzconnection.lib.fritzwlan import FritzWLAN
-        self.report_wifi(FritzWLAN(fc=self.connection,
-                         service=1), "wifi '2.4ghz'")
-        self.report_wifi(
-            FritzWLAN(fc=self.connection, service=2), "wifi '5ghz'")
-        self.report_wifi(FritzWLAN(fc=self.connection,
-                         service=3), "wifi 'guest'")
+    def on_run(self):
+        if self.connection is None:
+            self._connect()
+
+        if self.do_wan:
+            self.report_wan()
+
+        if self.do_wifi:
+            from fritzconnection.lib.fritzwlan import FritzWLAN
+            self.report_wifi(FritzWLAN(fc=self.connection,
+                                       service=1), "wifi '2.4ghz'")
+            self.report_wifi(
+                FritzWLAN(fc=self.connection, service=2), "wifi '5ghz'")
+            self.report_wifi(FritzWLAN(fc=self.connection,
+                                       service=3), "wifi 'guest'")
 
 
 class CheckPing(Check):
