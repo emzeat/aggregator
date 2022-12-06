@@ -232,6 +232,7 @@ class CheckFritzBox(Check):
     CONFIG = merge_dict(Check.CONFIG, {
         'username': 'str: Name of the Fritz!Box user to use for login',
         'password': 'str: Password of the Fritz!Box user to use for login',
+        'use_tls': 'bool: Connect via https/tls. Default: False',
         'report_wifi': 'bool: Select to report wifi activity. Default: True',
         'report_wan': 'bool: Select to an active internet connection. Disable this for repeaters. Default: True',
         'timeout': f'seconds: Timeout after which a connection attempt is aborted. Default: {CHECK_TIMEOUT_S}',
@@ -245,6 +246,7 @@ class CheckFritzBox(Check):
         super().__init__(name='fritzbox', config=config)
         self.username = config['username']
         self.password = config['password']
+        self.use_tls = config.get('use_tls', False)
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
         self.do_wifi = config.get('report_wifi', True)
         self.disable_wifi = {}
@@ -260,7 +262,8 @@ class CheckFritzBox(Check):
     def _connect(self):
         from fritzconnection import FritzConnection
         self.connection = FritzConnection(address=self.host, user=self.username,
-                                          password=self.password, timeout=self.timeout)
+                                          password=self.password, timeout=self.timeout,
+                                          use_tls=self.use_tls)
 
     def report_wifi(self, service, band):
         from fritzconnection.core.exceptions import FritzServiceError
