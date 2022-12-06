@@ -225,13 +225,19 @@ class Check:
 
 class CheckFritzBox(Check):
     """Fetch status from an AVM Fritz!Box"""
+
+    WIFI_24 = "wifi '2.4ghz'"
+    WIFI_5 = "wifi '5ghz'"
+    WIFI_GUEST = "wifi 'guest'"
     CONFIG = merge_dict(Check.CONFIG, {
         'username': 'str: Name of the Fritz!Box user to use for login',
         'password': 'str: Password of the Fritz!Box user to use for login',
         'report_wifi': 'bool: Select to report wifi activity. Default: True',
         'report_wan': 'bool: Select to an active internet connection. Disable this for repeaters. Default: True',
         'timeout': f'seconds: Timeout after which a connection attempt is aborted. Default: {CHECK_TIMEOUT_S}',
-        'disable_5ghz': 'int: Select the hour after and before which 5ghz wifi will be automatically disabled if no clients active. Default: None'
+        'disable_5ghz': '[int, int]: Select the hour after and before which 5ghz wifi will be automatically disabled if no clients active. Default: None',
+        'disable_2.4ghz': '[int, int]: Select the hour after and before which 2.4ghz wifi will be automatically disabled if no clients active. Default: None',
+        'disable_guest': '[int, int]: Select the hour after and before which guest wifi will be automatically disabled if no clients active. Default: None',
     })
 
     def __init__(self, config: dict):
@@ -241,7 +247,13 @@ class CheckFritzBox(Check):
         self.password = config['password']
         self.timeout = config.get('timeout', CHECK_TIMEOUT_S)
         self.do_wifi = config.get('report_wifi', True)
-        self.disable_5ghz = config.get('disable_5ghz', None)
+        self.disable_wifi = {}
+        self.disable_wifi[CheckFritzBox.WIFI_5] = config.get(
+            'disable_5ghz', None)
+        self.disable_wifi[CheckFritzBox.WIFI_24] = config.get(
+            'disable_2.4ghz', None)
+        self.disable_wifi[CheckFritzBox.WIFI_GUEST] = config.get(
+            'disable_guest', None)
         self.do_wan = config.get('report_wan', True)
         self.connection = None
 
@@ -272,12 +284,21 @@ class CheckFritzBox(Check):
         active_clients = len(
             [c for c in service.get_hosts_info() if c['status']])
         self.add_field_value('clients', active_clients, device=band)
-        if self.disable_5ghz and active and 0 == active_clients and '5ghz' in band:
+
+        # wifi management features
+        disabled_hours = self.disable_wifi.get(band, None)
+        if disabled_hours:
             hour = datetime.datetime.now().hour
-            if hour >= max(self.disable_5ghz) or hour <= min(self.disable_5ghz):
-                self.logger.info(
-                    f"Disabling {band} as {hour} in {self.disable_5ghz}")
-                service.disable()
+            if hour >= max(disabled_hours) or hour < min(disabled_hours):
+                if active and 0 == active_clients:
+                    self.logger.info(
+                        f"Disabling {band} as {hour} in {disabled_hours}")
+                    service.disable()
+            else:
+                if not active:
+                    self.logger.info(
+                        f"Enabling {band} as {hour} not in {disabled_hours}")
+                    service.enable()
 
     def report_wan(self):
         from fritzconnection.lib.fritzstatus import FritzStatus
@@ -313,11 +334,11 @@ class CheckFritzBox(Check):
         if self.do_wifi:
             from fritzconnection.lib.fritzwlan import FritzWLAN
             self.report_wifi(FritzWLAN(fc=self.connection,
-                                       service=1), "wifi '2.4ghz'")
+                                       service=1), CheckFritzBox.WIFI_24)
             self.report_wifi(
-                FritzWLAN(fc=self.connection, service=2), "wifi '5ghz'")
+                FritzWLAN(fc=self.connection, service=2), CheckFritzBox.WIFI_5)
             self.report_wifi(FritzWLAN(fc=self.connection,
-                                       service=3), "wifi 'guest'")
+                                       service=3), CheckFritzBox.WIFI_GUEST)
 
 
 class CheckPing(Check):
