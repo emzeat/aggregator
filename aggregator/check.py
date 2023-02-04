@@ -1,7 +1,7 @@
 """
  check.py
 
- Copyright (c) 2021 - 2022 Marius Zwicker
+ Copyright (c) 2021 - 2023 Marius Zwicker
  All rights reserved.
 
  SPDX-License-Identifier: AGPL-3.0-only
@@ -1753,6 +1753,7 @@ class CheckShellyPM(Check):
 
     CONFIG = merge_dict(Check.CONFIG, {
         'ip': 'str: IP Address of the Shelly Plug (if different from host)',
+        'gen2': 'bool: Gen2 device with new RPC API. Default: False',
         'channels': 'str: List of channel names',
         'user': 'str: Username to authenticate with',
         'password': 'str: Password to authenticate with'
@@ -1769,8 +1770,25 @@ class CheckShellyPM(Check):
             self.auth = HTTPBasicAuth(username=user, password=password)
         else:
             self.auth = None
+        self._gen2 = None
+
+    def is_gen2(self):
+        results = requests.get(
+            f'http://{self.ip}/shelly', timeout=CHECK_TIMEOUT_S, auth=self.auth)
+        if 200 == results.status_code:
+            info = results.json()
+            return info.get('gen', 1) == 2
+        return False
 
     def on_run(self):
+        if self._gen2 is None:
+            self._gen2 = self.is_gen2()
+        if self._gen2:
+            self.on_run_v2()
+        else:
+            self.on_run_v1()
+
+    def on_run_v1(self):
         results = requests.get(
             f'http://{self.ip}/status', timeout=CHECK_TIMEOUT_S, auth=self.auth)
         if 200 == results.status_code:
@@ -1798,6 +1816,36 @@ class CheckShellyPM(Check):
                 # https://www.shelly-support.eu/forum/index.php?thread/487-gel%C3%B6st-mqtt-relay-0-energy-wert/
                 self.add_field_value(
                     'total', float(meter.get('total', -1)) / 60.0 / 1000.0, unit='kWh', device=device)
+        else:
+            self.logger.error(
+                f"Failed to query plug: {results.status_code} - {results.text}")
+
+    def on_run_v2(self):
+        results = requests.get(
+            f'http://{self.ip}/rpc/Shelly.GetStatus', timeout=CHECK_TIMEOUT_S, auth=self.auth)
+        if 200 == results.status_code:
+            status = results.json()
+            for index in (0, 1, 2, 3, 4):
+                try:
+                    relay = status[f'switch:{index}']
+                    device = self.channels[index]
+                except IndexError:
+                    device = f"channel{index}"
+                except KeyError:
+                    continue
+                self.add_field_value('enabled', int(
+                    relay['output']), device=device)
+                self.add_field_value('temperature', float(
+                    relay['temperature']['tC']), unit='celcius', device=device)
+                # power in Watts
+                self.add_field_value(
+                    'power', float(relay['apower']), unit='W', device=device)
+                # power is in Watt-Hours
+                # https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Switch#status
+                meter = relay.get('aenergy', None)
+                if meter:
+                    self.add_field_value(
+                        'total', float(meter.get('total', -1)) / 1000.0, unit='kWh', device=device)
         else:
             self.logger.error(
                 f"Failed to query plug: {results.status_code} - {results.text}")
