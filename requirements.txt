@@ -12,4 +12,6 @@ prometheus-client==0.13.1
 psutil==5.9.0
 python-dotenv==0.19.2
 requests==2.27.1
+# https://stackoverflow.com/questions/77213053
+Werkzeug==2.2.2
 wheel==0.37.1
